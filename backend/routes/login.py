@@ -1,71 +1,81 @@
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from database.db_pool import get_db_pool
 
-router = APIRouter()
+login_router = APIRouter()
 
-# Request/Response models
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: dict
-
-class ErrorResponse(BaseModel):
-    error: str
-    message: str
-
-@router.post(
-    "/login",
-    response_model=LoginResponse,
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid credentials"},
-        500: {"model": ErrorResponse, "description": "Internal server error"}
-    },
-    summary="User Login",
-    description="Authenticate user and return access token"
-)
-async def login(credentials: LoginRequest):
+@login_router.post("/login")
+async def login(login_data: LoginRequest):
     """
-    Login endpoint
+    Login endpoint to authenticate a user
     
-    - **email**: User's email address
-    - **password**: User's password
+    Verifies:
+    - Username exists in the database
+    - Password matches the stored password
     
-    Returns JWT access token on successful authentication
+    Returns user information if authentication is successful
     """
-    
-    # TODO: Implement actual authentication logic
-    # This is a sample implementation
-    
-    # Sample validation (replace with actual database check)
-    if credentials.email == "admin@example.com" and credentials.password == "admin123":
+    try:
+        print(f"[LOGIN] Received login request for username: {login_data.username}")
+        
+        # Get database connection pool
+        print(f"[LOGIN] Getting database connection pool...")
+        pool = await get_db_pool()
+        
+        async with pool.acquire() as conn:
+            print(f"[LOGIN] Database connection acquired")
+            
+            # Fetch user from database
+            print(f"[LOGIN] Fetching user '{login_data.username}' from database...")
+            user = await conn.fetchrow(
+                "SELECT id, username, password, role FROM users WHERE username = $1",
+                login_data.username
+            )
+            
+            # Check if user exists
+            if not user:
+                print(f"[LOGIN ERROR] User '{login_data.username}' not found")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid username or password"
+                )
+            
+            print(f"[LOGIN] User found, verifying password...")
+            
+            # Verify password (no encryption as requested)
+            if user['password'] != login_data.password:
+                print(f"[LOGIN ERROR] Password mismatch for user '{login_data.username}'")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid username or password"
+                )
+            
+            print(f"[LOGIN] Password verified successfully for user '{login_data.username}'")
+        
+        # Return success response with user information
+        print(f"[LOGIN] Login successful for user '{login_data.username}' with role '{user['role']}'")
         return {
-            "access_token": "sample_jwt_token_here",
-            "token_type": "bearer",
+            "status": "success",
+            "message": "Login successful",
             "user": {
-                "id": 1,
-                "email": credentials.email,
-                "name": "Admin User",
-                "role": "admin"
+                "id": str(user['id']),
+                "username": user['username'],
+                "role": user['role']
             }
         }
     
-    # Invalid credentials
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid email or password"
-    )
-
-@router.post("/logout", summary="User Logout")
-async def logout():
-    """
-    Logout endpoint
-    
-    Invalidates the user's access token
-    """
-    # TODO: Implement token invalidation logic
-    return {"message": "Successfully logged out"}
+    except HTTPException as he:
+        print(f"[LOGIN ERROR] HTTPException: {he.status_code} - {he.detail}")
+        raise
+    except Exception as e:
+        print(f"[LOGIN ERROR] Unexpected error: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"[LOGIN ERROR] Traceback:\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred during login: {str(e)}"
+        )
