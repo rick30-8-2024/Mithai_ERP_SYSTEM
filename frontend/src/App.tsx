@@ -6,6 +6,9 @@ import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 import Inventory from './components/Inventory';
 import InventoryDetail from './components/InventoryDetail';
+import RecipeManagement from './components/RecipeManagement';
+import WorkOrder from './components/WorkOrder';
+import KitchenDisplay from './components/KitchenDisplay';
 
 function App() {
   return (
@@ -41,6 +44,36 @@ function App() {
           element={
             <ProtectedRoute>
               <InventoryDetail />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Recipe Management route */}
+        <Route
+          path="/recipe-management"
+          element={
+            <ProtectedRoute>
+              <RecipeManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Work Order route */}
+        <Route
+          path="/work-order"
+          element={
+            <ProtectedRoute>
+              <WorkOrder />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Kitchen Display route */}
+        <Route
+          path="/kitchen-display"
+          element={
+            <ProtectedRoute>
+              <KitchenDisplay />
             </ProtectedRoute>
           }
         />

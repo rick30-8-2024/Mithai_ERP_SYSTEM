@@ -258,6 +258,12 @@ function Dashboard() {
                   const l = name.toLowerCase();
                   if (l.includes('inventory')) {
                     navigate('/inventory');
+                  } else if (l.includes('recipe')) {
+                    navigate('/recipe-management');
+                  } else if (l.includes('work order')) {
+                    navigate('/work-order');
+                  } else if (l.includes('kitchen')) {
+                    navigate('/kitchen-display');
                   }
                 }}
                 role="button"
@@ -267,6 +273,12 @@ function Dashboard() {
                     const l = name.toLowerCase();
                     if (l.includes('inventory')) {
                       navigate('/inventory');
+                    } else if (l.includes('recipe')) {
+                      navigate('/recipe-management');
+                    } else if (l.includes('work order')) {
+                      navigate('/work-order');
+                    } else if (l.includes('kitchen')) {
+                      navigate('/kitchen-display');
                     }
                   }
                 }}

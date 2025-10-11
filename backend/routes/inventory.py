@@ -49,6 +49,8 @@ def _row_to_item(row) -> dict:
         # Finished Good specific
         "category_type": row.get("category_type"),
         "packing_qty": row.get("packing_qty"),
+        # Factory field
+        "factory": row.get("factory"),
     }
 
 
@@ -56,6 +58,7 @@ class ListRequest(BaseModel):
     query: Optional[str] = ""
     category: Optional[str] = None
     status: Optional[str] = None
+    factory: Optional[str] = None
     limit: int = 50
     offset: int = 0
 
@@ -83,6 +86,8 @@ class CreateRequest(BaseModel):
     # Finished Good specific
     category_type: Optional[str] = None
     packing_qty: Optional[str] = None
+    # Factory field
+    factory: Optional[str] = None
 
 
 class UpdateRequest(BaseModel):
@@ -104,6 +109,8 @@ class UpdateRequest(BaseModel):
     # Finished Good specific
     category_type: Optional[str] = None
     packing_qty: Optional[str] = None
+    # Factory field
+    factory: Optional[str] = None
 
 
 @inventory_router.post("/list")
@@ -117,7 +124,7 @@ async def list_inventory(payload: ListRequest):
             rows = await conn.fetch(
                 """
                 SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                       brand, grade, packing_weight, supplier, category_type, packing_qty
+                       brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 FROM inventory
                 WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2)
                   AND ($3::text IS NULL OR category = $3)
@@ -127,10 +134,11 @@ async def list_inventory(payload: ListRequest):
                          WHEN current_stock < min_stock THEN 'Low Stock'
                          ELSE 'In Stock'
                        END = $6)
+                  AND ($7::text IS NULL OR factory = $7)
                 ORDER BY name
                 LIMIT $4 OFFSET $5
                 """,
-                q, pattern, payload.category, payload.limit, payload.offset, status
+                q, pattern, payload.category, payload.limit, payload.offset, status, payload.factory
             )
         items = [_row_to_item(r) for r in rows]
         return {"items": items, "count": len(items)}
@@ -149,7 +157,7 @@ async def get_inventory_item(payload: GetRequest):
                 row = await conn.fetchrow(
                     """
                     SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                           brand, grade, packing_weight, supplier, category_type, packing_qty
+                           brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                     FROM inventory WHERE sku = $1
                     """,
                     payload.sku
@@ -158,7 +166,7 @@ async def get_inventory_item(payload: GetRequest):
                 row = await conn.fetchrow(
                     """
                     SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                           brand, grade, packing_weight, supplier, category_type, packing_qty
+                           brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                     FROM inventory WHERE id = $1::uuid
                     """,
                     payload.id
@@ -180,14 +188,14 @@ async def create_inventory_item(payload: CreateRequest):
             row = await conn.fetchrow(
                 """
                 INSERT INTO inventory (name, sku, category, unit, current_stock, min_stock, max_stock, last_updated_by,
-                                     brand, grade, packing_weight, supplier, category_type, packing_qty)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                                     brand, grade, packing_weight, supplier, category_type, packing_qty, factory)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                          brand, grade, packing_weight, supplier, category_type, packing_qty
+                          brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 """,
                 payload.name, payload.sku, payload.category, payload.unit,
                 payload.current_stock, payload.min_stock, payload.max_stock, payload.last_updated_by,
-                payload.brand, payload.grade, payload.packing_weight, payload.supplier, payload.category_type, payload.packing_qty
+                payload.brand, payload.grade, payload.packing_weight, payload.supplier, payload.category_type, payload.packing_qty, payload.factory
             )
         return _row_to_item(row)
     except UniqueViolationError:
@@ -242,6 +250,9 @@ async def update_inventory_item(payload: UpdateRequest):
     if payload.packing_qty is not None:
         fields.append("packing_qty = ${}")
         values.append(payload.packing_qty)
+    if payload.factory is not None:
+        fields.append("factory = ${}")
+        values.append(payload.factory)
 
     if not fields:
         raise HTTPException(status_code=400, detail="No fields provided to update")
@@ -262,7 +273,7 @@ async def update_inventory_item(payload: UpdateRequest):
                     SET {set_sql}
                     WHERE sku = ${where_param_index}
                     RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                              brand, grade, packing_weight, supplier, category_type, packing_qty
+                              brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 """
                 row = await conn.fetchrow(sql, *values, payload.sku)
             else:
@@ -272,7 +283,7 @@ async def update_inventory_item(payload: UpdateRequest):
                     SET {set_sql}
                     WHERE id = ${where_param_index}::uuid
                     RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                              brand, grade, packing_weight, supplier, category_type, packing_qty
+                              brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 """
                 row = await conn.fetchrow(sql, *values, payload.id)
 

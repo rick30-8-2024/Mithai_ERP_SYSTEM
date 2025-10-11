@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MoreVertical, Pencil } from "lucide-react";
+import { MoreVertical, Pencil, ArrowLeft } from "lucide-react";
 import {
   inventoryApi,
   type InventoryItem,
@@ -9,6 +9,7 @@ import {
 
 type CategoryFilter = "All" | InventoryCategory;
 type StatusFilter = "All" | "In Stock" | "Low Stock" | "Out of Stock";
+type FactoryFilter = "All" | "Factory 1" | "Factory 2";
 
 type ModalProps = {
   open: boolean;
@@ -184,6 +185,7 @@ export default function Inventory() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("All");
   const [status, setStatus] = useState<StatusFilter>("All");
+  const [factory, setFactory] = useState<FactoryFilter>("All");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -231,6 +233,7 @@ export default function Inventory() {
         query,
         category: category === "All" ? null : category,
         status: status === "All" ? null : status,
+        factory: factory === "All" ? null : factory,
         limit: 200,
         offset: 0,
       });
@@ -248,7 +251,7 @@ export default function Inventory() {
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, category, status]);
+  }, [query, category, status, factory]);
 
   function openEdit(item: InventoryItem) {
     setSelected(item);
@@ -279,7 +282,7 @@ export default function Inventory() {
         @media (min-width: 768px) {
           .inventory-filters {
             display: grid !important;
-            grid-template-columns: 1fr 150px 150px auto !important;
+            grid-template-columns: 1fr 150px 150px 150px auto !important;
             gap: 10px !important;
           }
           .inventory-search-wrapper {
@@ -318,12 +321,33 @@ export default function Inventory() {
             gap: 12,
           }}
         >
-          <div>
-            <h1 className="title" style={{ margin: 0 }}>
-              Inventory Management
-            </h1>
-            <div style={{ color: "var(--muted)", marginTop: 6 }}>
-              Track and manage your inventory items
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={() => navigate(-1)}
+              style={{
+                background: "transparent",
+                border: "1.5px solid var(--border)",
+                borderRadius: 10,
+                width: 40,
+                height: 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "var(--fg)",
+              }}
+              title="Go back"
+              aria-label="Go back"
+            >
+              <ArrowLeft width={20} height={20} />
+            </button>
+            <div>
+              <h1 className="title" style={{ margin: 0 }}>
+                Inventory Management
+              </h1>
+              <div style={{ color: "var(--muted)", marginTop: 6 }}>
+                Track and manage your inventory items
+              </div>
             </div>
           </div>
           
@@ -453,6 +477,26 @@ export default function Inventory() {
             <option>Low Stock</option>
             <option>Out of Stock</option>
           </select>
+          <select
+            className="inventory-filter-select"
+            value={factory}
+            onChange={(e) => setFactory(e.target.value as FactoryFilter)}
+            aria-label="Filter by factory"
+            style={{
+              flex: "1 1 calc(50% - 5px)",
+              minWidth: "120px",
+              background: "transparent",
+              color: "var(--fg)",
+              border: "1.5px solid var(--border)",
+              padding: "8px 10px",
+              borderRadius: 10,
+              fontWeight: 700,
+            }}
+          >
+            <option>All</option>
+            <option>Factory 1</option>
+            <option>Factory 2</option>
+          </select>
           <button
             className="btn inventory-add-btn"
             type="button"
@@ -527,7 +571,6 @@ export default function Inventory() {
               <div style={{ display: "grid", gap: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontWeight: 900, fontSize: 16 }}>{it.name}</div>
-                  <CategoryBadge category={it.category} />
                   <StatusBadge status={it.status} />
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -558,6 +601,10 @@ export default function Inventory() {
                   
                   {it.category === "Finished Good" && it.packing_qty && (
                     <Info label="Packing Qty" value={it.packing_qty} />
+                  )}
+                  
+                  {it.factory && (
+                    <Info label="Factory" value={it.factory} />
                   )}
                   
                   <Info
@@ -831,6 +878,7 @@ type AddOrEditValues = {
   supplier?: string;
   category_type?: string;
   packing_qty?: string;
+  factory?: string;
 };
 
 function TypeSelectionModal({
@@ -925,6 +973,7 @@ function AddOrEditModal({
     supplier: initial?.supplier || "",
     category_type: initial?.category_type || "",
     packing_qty: initial?.packing_qty || "",
+    factory: initial?.factory || "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -945,6 +994,7 @@ function AddOrEditModal({
       supplier: initial?.supplier || "",
       category_type: initial?.category_type || "",
       packing_qty: initial?.packing_qty || "",
+      factory: initial?.factory || "",
     });
     setErr(null);
     setSubmitting(false);
@@ -1114,6 +1164,17 @@ function AddOrEditModal({
               style={inputStyle}
               min={0}
             />
+          </Field>
+          <Field label="Factory">
+            <select
+              value={values.factory || ""}
+              onChange={(e) => setValues((v) => ({ ...v, factory: e.target.value }))}
+              style={inputStyle}
+            >
+              <option value="">Not Assigned</option>
+              <option>Factory 1</option>
+              <option>Factory 2</option>
+            </select>
           </Field>
         </div>
 

@@ -73,10 +73,17 @@ export function Dashboard({ onNavigate, currentUser }: DashboardProps) {
     },
     {
       id: 'workOrder',
-      title: 'Work Order',
+      title: 'Manage Work Orders',
       icon: <ClipboardList className="w-8 h-8" />,
       description: 'Production orders',
       color: 'from-red-400/20 to-red-600/20'
+    },
+    {
+      id: 'workOrders',
+      title: 'Work Orders',
+      icon: <ClipboardList className="w-8 h-8" />,
+      description: 'My assigned tasks',
+      color: 'from-blue-400/20 to-blue-600/20'
     },
     {
       id: 'kitchenDisplay',

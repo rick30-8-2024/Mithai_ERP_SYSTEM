@@ -337,7 +337,7 @@ export function WorkOrder({ onNavigate }: WorkOrderProps) {
             <ClipboardList className="w-6 h-6 text-red-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-slate-800">Work Order Management</h1>
+            <h1 className="text-2xl font-semibold text-slate-800">Manage Work Orders</h1>
             <p className="text-slate-600">Create and manage production work orders</p>
           </div>
         </div>
@@ -388,7 +388,7 @@ export function WorkOrder({ onNavigate }: WorkOrderProps) {
             className="rounded-xl bg-red-600 hover:bg-red-700 text-white"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Create Work Order
+            Create New Work Order
           </Button>
           <Button variant="outline" className="rounded-xl bg-white/80 backdrop-blur-sm border-slate-200">
             <Filter className="w-4 h-4 mr-2" />

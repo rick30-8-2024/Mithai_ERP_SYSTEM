@@ -5,6 +5,7 @@ import { RawMaterials } from './components/RawMaterials';
 import { FinishedGoods } from './components/FinishedGoods';
 import { RecipeManagement } from './components/RecipeManagement';
 import { WorkOrder } from './components/WorkOrder';
+import { WorkOrders } from './components/WorkOrders';
 import { KitchenDisplay } from './components/KitchenDisplay';
 import { PurchaseOrder } from './components/PurchaseOrder';
 import { SendToFactory } from './components/SendToFactory';
@@ -19,6 +20,7 @@ import { QualityCheck } from './components/QualityCheck';
 import { CustomerManagement } from './components/CustomerManagement';
 import { PaymentTracking } from './components/PaymentTracking';
 import { CRM } from './components/CRM';
+import { Toaster } from './components/ui/sonner';
 
 export type ModuleName = 
   | 'dashboard'
@@ -27,6 +29,7 @@ export type ModuleName =
   | 'finishedGoods'
   | 'recipeManagement'
   | 'workOrder'
+  | 'workOrders'
   | 'kitchenDisplay'
   | 'purchaseOrder'
   | 'sendToFactory'
@@ -64,6 +67,8 @@ export default function App() {
         return <RecipeManagement onNavigate={navigateToModule} />;
       case 'workOrder':
         return <WorkOrder onNavigate={navigateToModule} />;
+      case 'workOrders':
+        return <WorkOrders onNavigate={navigateToModule} currentUser={currentUser} />;
       case 'kitchenDisplay':
         return <KitchenDisplay onNavigate={navigateToModule} />;
       case 'purchaseOrder':
@@ -100,6 +105,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {renderCurrentModule()}
+      <Toaster />
     </div>
   );
 }

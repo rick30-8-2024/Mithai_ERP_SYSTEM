@@ -6,6 +6,8 @@ from database import initialize_database
 from routes.login import login_router
 from routes.signup import signup_router
 from routes.inventory import inventory_router
+from routes.recipes import recipes_router
+from routes.work_orders import work_orders_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,6 +38,8 @@ app.add_middleware(
 app.include_router(login_router)
 app.include_router(signup_router)
 app.include_router(inventory_router)
+app.include_router(recipes_router)
+app.include_router(work_orders_router)
 
 
 @app.get("/")
