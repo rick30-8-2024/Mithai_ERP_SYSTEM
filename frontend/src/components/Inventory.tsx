@@ -342,10 +342,10 @@ export default function Inventory() {
               <ArrowLeft width={20} height={20} />
             </button>
             <div>
-              <h1 className="title" style={{ margin: 0 }}>
+              <h1 className="title" style={{ margin: 0, fontSize: 20 }}>
                 Inventory Management
               </h1>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
+              <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 10 }}>
                 Track and manage your inventory items
               </div>
             </div>

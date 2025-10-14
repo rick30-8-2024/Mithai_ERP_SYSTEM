@@ -22,10 +22,11 @@ import {
 } from 'lucide-react';
 
 const DASHBOARD_DATA = {
-  "Sweet Manufacturing MRP": {
+  "the Mithai company": {
     "Inventory": ["Manage stock levels"],
     "Recipe Management": ["Manage recipes"],
     "Work Order": ["Production orders"],
+    "My Work Orders": ["Assigned work orders"],
     "Kitchen Display": ["Kitchen operations"],
     "Purchase Order": ["Supplier orders"],
     "Send to Factory": ["Transfer to production"],
@@ -107,13 +108,17 @@ function Dashboard() {
     navigate('/login');
   };
 
-  const header = "Sweet Manufacturing MRP";
+  const header = "the Mithai company";
 
   return (
     <div className="page">
       <main style={{ minHeight: '100vh', padding: '24px', paddingTop: '24px', maxWidth: '1200px', margin: '0 auto' }}>
         <section style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h1 className="title" style={{ margin: 0, textAlign: 'left' }}>{header}</h1>
+          {/* Desktop: full name, Mobile: TMC */}
+          <h1 className="title" style={{ margin: 0, textAlign: 'left' }}>
+            <span style={{ display: 'inline' }} className="desktop-title">{header}</span>
+            <span style={{ display: 'none' }} className="mobile-title">TMC</span>
+          </h1>
 
           {/* Right controls: Username dropdown + Theme toggle */}
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
@@ -133,12 +138,17 @@ function Dashboard() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 8,
-                  height: 40
+                  height: 40,
+                  maxWidth: '160px'
                 }}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                <span>{username}</span>
+                <span style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>{username}</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
@@ -260,10 +270,24 @@ function Dashboard() {
                     navigate('/inventory');
                   } else if (l.includes('recipe')) {
                     navigate('/recipe-management');
+                  } else if (l === 'my work orders') {
+                    navigate('/work-orders');
                   } else if (l.includes('work order')) {
                     navigate('/work-order');
                   } else if (l.includes('kitchen')) {
                     navigate('/kitchen-display');
+                  } else if (l.includes('purchase')) {
+                    navigate('/purchase-orders');
+                  } else if (l.includes('send to factory')) {
+                    navigate('/send-to-factory');
+                  } else if (l.includes('sales order approval')) {
+                    navigate('/sales-order-approval');
+                  } else if (l.includes('sales order')) {
+                    navigate('/sales-orders');
+                  } else if (l.includes('user management')) {
+                    navigate('/user-management');
+                  } else if (l.includes('customer management')) {
+                    navigate('/customer-management');
                   }
                 }}
                 role="button"
@@ -275,10 +299,24 @@ function Dashboard() {
                       navigate('/inventory');
                     } else if (l.includes('recipe')) {
                       navigate('/recipe-management');
+                    } else if (l === 'my work orders') {
+                      navigate('/work-orders');
                     } else if (l.includes('work order')) {
                       navigate('/work-order');
                     } else if (l.includes('kitchen')) {
                       navigate('/kitchen-display');
+                    } else if (l.includes('purchase')) {
+                      navigate('/purchase-orders');
+                    } else if (l.includes('send to factory')) {
+                      navigate('/send-to-factory');
+                    } else if (l.includes('sales order approval')) {
+                      navigate('/sales-order-approval');
+                    } else if (l.includes('sales order')) {
+                      navigate('/sales-orders');
+                    } else if (l.includes('user management')) {
+                      navigate('/user-management');
+                    } else if (l.includes('customer management')) {
+                      navigate('/customer-management');
                     }
                   }
                 }}
@@ -295,8 +333,8 @@ function Dashboard() {
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  textAlign: 'center',
+                  alignItems: 'flex-start',
+                  textAlign: 'left',
                   gap: 12
                 }}
               >
@@ -314,11 +352,11 @@ function Dashboard() {
                     transition: 'all .22s ease'
                   }}
                   aria-hidden
-                >
+>
                   {getIcon(name, 26)}
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 17 }}>{name}</div>
-                <div style={{ fontSize: 14, color: 'var(--muted)' }}>{desc}</div>
+                <div style={{ fontWeight: 800, fontSize: 20 }}>{name}</div>
+                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{desc}</div>
               </div>
             );
           })}

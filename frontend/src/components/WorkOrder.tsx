@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, X, Trash2 } from "lucide-react";
-import { workOrdersApi, recipesApi, type WorkOrder, type WorkOrderIngredient, type Recipe } from "../lib/api";
+import { workOrdersApi, recipesApi, usersApi, type WorkOrder, type WorkOrderIngredient, type Recipe } from "../lib/api";
 
 type StatusFilter = "All" | "Draft" | "Scheduled" | "In Progress" | "Completed" | "On Hold";
 type PriorityFilter = "All" | "Low" | "Medium" | "High" | "Urgent";
@@ -223,6 +223,15 @@ export default function WorkOrder() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
   
+  const formatTime = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
+  
   const currentUser = useMemo(() => {
     const username = localStorage.getItem('ERP_USERNAME');
     return username || 'Unknown';
@@ -248,6 +257,25 @@ export default function WorkOrder() {
   }, [theme]);
 
   const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
+
+  // Timer for in-progress orders
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWorkOrders((prev) =>
+        prev.map((order) => {
+          if (order.status === "In Progress" && order.started_at) {
+            const startTime = new Date(order.started_at).getTime();
+            const now = new Date().getTime();
+            const elapsed = Math.floor((now - startTime) / 60000); // minutes
+            return { ...order, elapsed_time: elapsed };
+          }
+          return order;
+        })
+      );
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   async function refresh() {
     setLoading(true);
@@ -339,10 +367,10 @@ export default function WorkOrder() {
               <ArrowLeft width={20} height={20} />
             </button>
             <div>
-              <h1 className="title" style={{ margin: 0 }}>
-                Work Order Management
+              <h1 className="title" style={{ margin: 0, fontSize: 20 }}>
+                Manage Work Orders
               </h1>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
+              <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 10 }}>
                 Create and manage production work orders
               </div>
             </div>
@@ -605,6 +633,91 @@ export default function WorkOrder() {
                   <Info label="Assigned To" value={wo.assigned_worker} />
                 )}
 
+                {/* Progress Bar or Status Message */}
+                <div style={{ marginTop: 12, marginBottom: 12 }}>
+                  {(wo.status === "In Progress" || wo.status === "Paused") && wo.expected_time ? (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Progress</span>
+                        <span style={{ fontSize: 11, fontWeight: 800 }}>
+                          {Math.min(Math.round((wo.elapsed_time / wo.expected_time) * 100), 100)}%
+                        </span>
+                      </div>
+                      <div style={{ width: "100%", height: 8, background: "var(--bg)", borderRadius: 999, overflow: "hidden" }}>
+                        <div
+                          style={{
+                            width: `${Math.min((wo.elapsed_time / wo.expected_time) * 100, 100)}%`,
+                            height: "100%",
+                            background: wo.status === "Paused"
+                              ? "linear-gradient(90deg, #f97316, #fb923c)"
+                              : "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+                            transition: "width 0.3s ease",
+                          }}
+                        />
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, display: "flex", justifyContent: "space-between" }}>
+                        <span>{formatTime(wo.elapsed_time)} / {formatTime(wo.expected_time)}</span>
+                        {wo.status === "Paused" && <span style={{ color: "#f97316", fontWeight: 700 }}>⏸ Paused</span>}
+                      </div>
+                    </>
+                  ) : wo.status === "Completed" ? (
+                    <div style={{
+                      background: "rgba(34, 197, 94, 0.1)",
+                      border: "1px solid rgba(34, 197, 94, 0.3)",
+                      borderRadius: 8,
+                      padding: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e" }}>
+                        Completed in {formatTime(wo.elapsed_time)}
+                      </span>
+                    </div>
+                  ) : wo.status === "Scheduled" || wo.status === "Draft" ? (
+                    <div style={{
+                      background: "rgba(168, 85, 247, 0.1)",
+                      border: "1px solid rgba(168, 85, 247, 0.3)",
+                      borderRadius: 8,
+                      padding: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#a855f7" }}>
+                        {wo.status === "Draft" ? "Not started yet" : `Scheduled${wo.expected_time ? ` • Est. ${formatTime(wo.expected_time)}` : ""}`}
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: "rgba(234, 179, 8, 0.1)",
+                      border: "1px solid rgba(234, 179, 8, 0.3)",
+                      borderRadius: 8,
+                      padding: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#eab308" }}>
+                        {wo.status}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
                   <button
                     onClick={() => openEdit(wo)}
@@ -778,6 +891,7 @@ function CreateWorkOrderModal({
   currentUser: string;
 }) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; username: string; role: string }>>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [batchSize, setBatchSize] = useState(1);
   const [workOrderNumber, setWorkOrderNumber] = useState("");
@@ -795,6 +909,10 @@ function CreateWorkOrderModal({
     // Load recipes
     recipesApi.list({ limit: 100 }).then(res => {
       setRecipes(res.items.filter(r => r.status === "Active"));
+    });
+    // Load users for worker assignment
+    usersApi.list().then(res => {
+      setUsers(res.users);
     });
     // Generate work order number
     const now = new Date();
@@ -816,6 +934,7 @@ function CreateWorkOrderModal({
     setError(null);
     if (!selectedRecipe) return setError("Please select a recipe");
     if (!workOrderNumber.trim()) return setError("Work order number is required");
+    if (!assignedWorker.trim()) return setError("Please assign a worker");
 
     try {
       setSubmitting(true);
@@ -831,6 +950,7 @@ function CreateWorkOrderModal({
       }));
 
       const estimatedCost = ingredients.reduce((sum, ing) => sum + ing.cost, 0);
+      const expectedTime = selectedRecipe.preparation_time + selectedRecipe.cooking_time;
 
       await workOrdersApi.create({
         work_order_number: workOrderNumber,
@@ -846,6 +966,7 @@ function CreateWorkOrderModal({
         estimated_cost: estimatedCost,
         notes: notes || undefined,
         ingredients,
+        expected_time: expectedTime,
         last_updated_by: currentUser,
       });
       
@@ -978,12 +1099,19 @@ function CreateWorkOrderModal({
                 />
               </Field>
               <Field label="Assigned Worker">
-                <input
-                  value={assignedWorker}
-                  onChange={(e) => setAssignedWorker(e.target.value)}
-                  placeholder="Optional"
+                <select 
+                  value={assignedWorker} 
+                  onChange={(e) => setAssignedWorker(e.target.value)} 
                   style={inputStyle}
-                />
+                  required
+                >
+                  <option value="">Select a worker *</option>
+                  {users.map(user => (
+                    <option key={user.id} value={user.username}>
+                      {user.username} ({user.role})
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
 
@@ -1147,6 +1275,7 @@ function EditWorkOrderModal({
   onSubmit: () => Promise<void>;
   currentUser: string;
 }) {
+  const [users, setUsers] = useState<Array<{ id: string; username: string; role: string }>>([]);
   const [batchSize, setBatchSize] = useState(1);
   const [actualQuantity, setActualQuantity] = useState(0);
   const [status, setStatus] = useState<WorkOrder["status"]>("Draft");
@@ -1160,6 +1289,10 @@ function EditWorkOrderModal({
 
   useEffect(() => {
     if (!open || !workOrder) return;
+    // Load users for worker assignment
+    usersApi.list().then(res => {
+      setUsers(res.users);
+    });
     setBatchSize(workOrder.batch_size);
     setActualQuantity(workOrder.actual_quantity);
     setStatus(workOrder.status);
@@ -1271,11 +1404,19 @@ function EditWorkOrderModal({
             />
           </Field>
           <Field label="Assigned Worker">
-            <input
-              value={assignedWorker}
-              onChange={(e) => setAssignedWorker(e.target.value)}
+            <select 
+              value={assignedWorker} 
+              onChange={(e) => setAssignedWorker(e.target.value)} 
               style={inputStyle}
-            />
+              required
+            >
+              <option value="">Select a worker *</option>
+              {users.map(user => (
+                <option key={user.id} value={user.username}>
+                  {user.username} ({user.role})
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
 

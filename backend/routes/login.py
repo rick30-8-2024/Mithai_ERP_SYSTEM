@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database.db_pool import get_db_pool
+import bcrypt
 
 login_router = APIRouter()
 
@@ -32,7 +33,7 @@ async def login(login_data: LoginRequest):
             # Fetch user from database
             print(f"[LOGIN] Fetching user '{login_data.username}' from database...")
             user = await conn.fetchrow(
-                "SELECT id, username, password, role FROM users WHERE username = $1",
+                "SELECT id, username, password, role, is_active, status FROM users WHERE username = $1",
                 login_data.username
             )
             
@@ -44,10 +45,30 @@ async def login(login_data: LoginRequest):
                     detail="Invalid username or password"
                 )
             
-            print(f"[LOGIN] User found, verifying password...")
+            # Check if user account is active
+            if not user.get('is_active', True):
+                print(f"[LOGIN ERROR] User '{login_data.username}' account is deactivated")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Your account has been deactivated. Please contact your administrator."
+                )
             
-            # Verify password (no encryption as requested)
-            if user['password'] != login_data.password:
+            # Check if user status is Active
+            user_status = user.get('status', 'Active')
+            if user_status != 'Active':
+                print(f"[LOGIN ERROR] User '{login_data.username}' status is '{user_status}'")
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Your account is {user_status}. Please contact your administrator."
+                )
+            
+            print(f"[LOGIN] User found and active, verifying password...")
+            
+            # Verify password using bcrypt
+            password_bytes = login_data.password.encode('utf-8')
+            stored_password_bytes = user['password'].encode('utf-8')
+            
+            if not bcrypt.checkpw(password_bytes, stored_password_bytes):
                 print(f"[LOGIN ERROR] Password mismatch for user '{login_data.username}'")
                 raise HTTPException(
                     status_code=401,
@@ -78,4 +99,31 @@ async def login(login_data: LoginRequest):
         raise HTTPException(
             status_code=500,
             detail=f"An error occurred during login: {str(e)}"
+        )
+@login_router.post("/users/list")
+async def list_users():
+    """
+    List all users for worker assignment dropdown
+    """
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            users = await conn.fetch(
+                "SELECT id, username, role FROM users ORDER BY username"
+            )
+            
+            return {
+                "users": [
+                    {
+                        "id": str(user["id"]),
+                        "username": user["username"],
+                        "role": user["role"]
+                    }
+                    for user in users
+                ]
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch users: {str(e)}"
         )

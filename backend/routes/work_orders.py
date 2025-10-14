@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from database.db_pool import get_db_pool
 from asyncpg.exceptions import UniqueViolationError, ForeignKeyViolationError
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime
 
 work_orders_router = APIRouter(prefix="/api/work-orders", tags=["work_orders"])
 
@@ -55,6 +55,11 @@ def _row_to_work_order(row, recipe_info: dict = None, ingredients: List[dict] = 
         "created_date": row["created_date"].isoformat() if row["created_date"] else None,
         "last_updated": row["last_updated"].isoformat() if row["last_updated"] else None,
         "last_updated_by": row.get("last_updated_by"),
+        "started_at": row["started_at"].isoformat() if row.get("started_at") else None,
+        "paused_at": row["paused_at"].isoformat() if row.get("paused_at") else None,
+        "completed_at": row["completed_at"].isoformat() if row.get("completed_at") else None,
+        "elapsed_time": int(row["elapsed_time"]) if row.get("elapsed_time") is not None else 0,
+        "expected_time": int(row["expected_time"]) if row.get("expected_time") is not None else None,
         "ingredients": ingredients or [],
     }
 
@@ -88,6 +93,11 @@ class CreateRequest(BaseModel):
     notes: Optional[str] = None
     ingredients: List[WorkOrderIngredient] = []
     last_updated_by: Optional[str] = None
+    started_at: Optional[str] = None
+    paused_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    elapsed_time: int = 0
+    expected_time: Optional[int] = None
 
 
 class UpdateRequest(BaseModel):
@@ -106,6 +116,11 @@ class UpdateRequest(BaseModel):
     notes: Optional[str] = None
     ingredients: Optional[List[WorkOrderIngredient]] = None
     last_updated_by: Optional[str] = None
+    started_at: Optional[str] = None
+    paused_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    elapsed_time: Optional[int] = None
+    expected_time: Optional[int] = None
 
 
 @work_orders_router.post("/list")
@@ -120,7 +135,8 @@ async def list_work_orders(payload: ListRequest):
                 SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity,
                        wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
                        wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date,
-                       wo.last_updated, wo.last_updated_by,
+                       wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
+                       wo.elapsed_time, wo.expected_time,
                        r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
                        r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                 FROM work_orders wo
@@ -198,7 +214,8 @@ async def get_work_order(payload: GetRequest):
                     SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity, 
                            wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
                            wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date, 
-                           wo.last_updated, wo.last_updated_by,
+                           wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
+                           wo.elapsed_time, wo.expected_time,
                            r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
                            r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                     FROM work_orders wo
@@ -213,7 +230,8 @@ async def get_work_order(payload: GetRequest):
                     SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity, 
                            wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
                            wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date, 
-                           wo.last_updated, wo.last_updated_by,
+                           wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
+                           wo.elapsed_time, wo.expected_time,
                            r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
                            r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                     FROM work_orders wo
@@ -268,6 +286,43 @@ async def get_work_order(payload: GetRequest):
 @work_orders_router.post("/create")
 async def create_work_order(payload: CreateRequest):
     try:
+        # Convert date strings to date objects
+        scheduled_date_obj = None
+        if payload.scheduled_date:
+            try:
+                scheduled_date_obj = datetime.strptime(payload.scheduled_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid scheduled_date format. Use YYYY-MM-DD")
+        
+        due_date_obj = None
+        if payload.due_date:
+            try:
+                due_date_obj = datetime.strptime(payload.due_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid due_date format. Use YYYY-MM-DD")
+        
+        # Convert timestamp strings to datetime objects
+        started_at_obj = None
+        if payload.started_at:
+            try:
+                started_at_obj = datetime.fromisoformat(payload.started_at.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid started_at format. Use ISO 8601 format")
+        
+        paused_at_obj = None
+        if payload.paused_at:
+            try:
+                paused_at_obj = datetime.fromisoformat(payload.paused_at.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid paused_at format. Use ISO 8601 format")
+        
+        completed_at_obj = None
+        if payload.completed_at:
+            try:
+                completed_at_obj = datetime.fromisoformat(payload.completed_at.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid completed_at format. Use ISO 8601 format")
+        
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -276,16 +331,19 @@ async def create_work_order(payload: CreateRequest):
                     """
                     INSERT INTO work_orders (work_order_number, recipe_id, batch_size, target_quantity,
                                            actual_quantity, status, priority, scheduled_date, due_date,
-                                           assigned_worker, estimated_cost, notes, last_updated_by)
-                    VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                                           assigned_worker, estimated_cost, notes, last_updated_by,
+                                           started_at, paused_at, completed_at, elapsed_time, expected_time)
+                    VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                     RETURNING id, work_order_number, recipe_id, batch_size, target_quantity, actual_quantity,
                               status, priority, scheduled_date, due_date, assigned_worker, estimated_cost,
-                              notes, created_date, last_updated, last_updated_by
+                              notes, created_date, last_updated, last_updated_by, started_at, paused_at,
+                              completed_at, elapsed_time, expected_time
                     """,
                     payload.work_order_number, payload.recipe_id, payload.batch_size, payload.target_quantity,
-                    payload.actual_quantity, payload.status, payload.priority, payload.scheduled_date,
-                    payload.due_date, payload.assigned_worker, payload.estimated_cost, payload.notes,
-                    payload.last_updated_by
+                    payload.actual_quantity, payload.status, payload.priority, scheduled_date_obj,
+                    due_date_obj, payload.assigned_worker, payload.estimated_cost, payload.notes,
+                    payload.last_updated_by, started_at_obj, paused_at_obj, completed_at_obj,
+                    payload.elapsed_time, payload.expected_time
                 )
                 
                 work_order_id = row["id"]
@@ -302,14 +360,26 @@ async def create_work_order(payload: CreateRequest):
                         ing.unit, ing.supplier, ing.grade, ing.cost
                     )
                 
-                # Get recipe info
+                # Get recipe info including time fields
                 recipe_row = await conn.fetchrow(
-                    "SELECT id, name, sku, category, total_yield, yield_unit FROM recipes WHERE id = $1::uuid",
+                    "SELECT id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time FROM recipes WHERE id = $1::uuid",
                     payload.recipe_id
                 )
                 
                 if not recipe_row:
                     raise HTTPException(status_code=404, detail="Recipe not found")
+                
+                # Calculate expected time if not provided
+                expected_time = payload.expected_time
+                if expected_time is None and recipe_row["preparation_time"] is not None and recipe_row["cooking_time"] is not None:
+                    expected_time = int(recipe_row["preparation_time"]) + int(recipe_row["cooking_time"])
+                
+                # Update the work order with expected_time if it was calculated
+                if expected_time is not None and payload.expected_time is None:
+                    await conn.execute(
+                        "UPDATE work_orders SET expected_time = $1 WHERE id = $2",
+                        expected_time, work_order_id
+                    )
                 
                 recipe_info = {
                     "id": str(recipe_row["id"]),
@@ -379,11 +449,21 @@ async def update_work_order(payload: UpdateRequest):
         fields.append("priority = ${}")
         values.append(payload.priority)
     if payload.scheduled_date is not None:
-        fields.append("scheduled_date = ${}")
-        values.append(payload.scheduled_date)
+        # Convert date string to date object
+        try:
+            scheduled_date_obj = datetime.strptime(payload.scheduled_date, "%Y-%m-%d").date()
+            fields.append("scheduled_date = ${}")
+            values.append(scheduled_date_obj)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_date format. Use YYYY-MM-DD")
     if payload.due_date is not None:
-        fields.append("due_date = ${}")
-        values.append(payload.due_date)
+        # Convert date string to date object
+        try:
+            due_date_obj = datetime.strptime(payload.due_date, "%Y-%m-%d").date()
+            fields.append("due_date = ${}")
+            values.append(due_date_obj)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid due_date format. Use YYYY-MM-DD")
     if payload.assigned_worker is not None:
         fields.append("assigned_worker = ${}")
         values.append(payload.assigned_worker)
@@ -396,6 +476,36 @@ async def update_work_order(payload: UpdateRequest):
     if payload.last_updated_by is not None:
         fields.append("last_updated_by = ${}")
         values.append(payload.last_updated_by)
+    if payload.started_at is not None:
+        # Convert ISO timestamp string to datetime object
+        try:
+            started_at_obj = datetime.fromisoformat(payload.started_at.replace('Z', '+00:00'))
+            fields.append("started_at = ${}")
+            values.append(started_at_obj)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid started_at format. Use ISO 8601 format")
+    if payload.paused_at is not None:
+        # Convert ISO timestamp string to datetime object
+        try:
+            paused_at_obj = datetime.fromisoformat(payload.paused_at.replace('Z', '+00:00'))
+            fields.append("paused_at = ${}")
+            values.append(paused_at_obj)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid paused_at format. Use ISO 8601 format")
+    if payload.completed_at is not None:
+        # Convert ISO timestamp string to datetime object
+        try:
+            completed_at_obj = datetime.fromisoformat(payload.completed_at.replace('Z', '+00:00'))
+            fields.append("completed_at = ${}")
+            values.append(completed_at_obj)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid completed_at format. Use ISO 8601 format")
+    if payload.elapsed_time is not None:
+        fields.append("elapsed_time = ${}")
+        values.append(payload.elapsed_time)
+    if payload.expected_time is not None:
+        fields.append("expected_time = ${}")
+        values.append(payload.expected_time)
     
     if not fields and payload.ingredients is None:
         raise HTTPException(status_code=400, detail="No fields provided to update")
@@ -467,7 +577,8 @@ async def update_work_order(payload: UpdateRequest):
                     SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity, 
                            wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
                            wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date, 
-                           wo.last_updated, wo.last_updated_by,
+                           wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
+                           wo.elapsed_time, wo.expected_time,
                            r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
                            r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                     FROM work_orders wo

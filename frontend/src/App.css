@@ -199,3 +199,17 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Responsive title display */
+.mobile-title {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-title {
+    display: none !important;
+  }
+  .mobile-title {
+    display: inline !important;
+  }
+}

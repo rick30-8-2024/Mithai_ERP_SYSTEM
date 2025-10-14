@@ -8,7 +8,14 @@ import Inventory from './components/Inventory';
 import InventoryDetail from './components/InventoryDetail';
 import RecipeManagement from './components/RecipeManagement';
 import WorkOrder from './components/WorkOrder';
+import WorkOrders from './components/WorkOrders';
 import KitchenDisplay from './components/KitchenDisplay';
+import PurchaseOrder from './components/PurchaseOrder';
+import SendToFactory from './components/SendToFactory';
+import SalesOrder from './components/SalesOrder';
+import SalesOrderApproval from './components/SalesOrderApproval';
+import UserManagement from './components/UserManagement';
+import CustomerManagement from './components/CustomerManagement';
 
 function App() {
   return (
@@ -68,12 +75,82 @@ function App() {
           }
         />
 
+        {/* My Work Orders route */}
+        <Route
+          path="/work-orders"
+          element={
+            <ProtectedRoute>
+              <WorkOrders />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Kitchen Display route */}
         <Route
           path="/kitchen-display"
           element={
             <ProtectedRoute>
               <KitchenDisplay />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Purchase Order route */}
+        <Route
+          path="/purchase-orders"
+          element={
+            <ProtectedRoute>
+              <PurchaseOrder />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Send to Factory route */}
+        <Route
+          path="/send-to-factory"
+          element={
+            <ProtectedRoute>
+              <SendToFactory />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Sales Order route */}
+        <Route
+          path="/sales-orders"
+          element={
+            <ProtectedRoute>
+              <SalesOrder />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Sales Order Approval route */}
+        <Route
+          path="/sales-order-approval"
+          element={
+            <ProtectedRoute>
+              <SalesOrderApproval />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* User Management route */}
+        <Route
+          path="/user-management"
+          element={
+            <ProtectedRoute>
+              <UserManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Customer Management route */}
+        <Route
+          path="/customer-management"
+          element={
+            <ProtectedRoute>
+              <CustomerManagement />
             </ProtectedRoute>
           }
         />

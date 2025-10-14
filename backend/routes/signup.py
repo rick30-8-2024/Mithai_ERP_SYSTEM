@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 import re
+import bcrypt
 from database.db_pool import get_db_pool
 
 signup_router = APIRouter()
@@ -102,6 +103,12 @@ async def signup(signup_data: SignupRequest):
             
             print(f"[SIGNUP] Role validation passed")
             
+            # Hash password with bcrypt
+            print(f"[SIGNUP] Hashing password with bcrypt...")
+            password_bytes = signup_data.password.encode('utf-8')
+            salt = bcrypt.gensalt()
+            hashed_password = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+            
             # Insert new user into database
             print(f"[SIGNUP] Inserting user into database...")
             await conn.execute(
@@ -110,7 +117,7 @@ async def signup(signup_data: SignupRequest):
                 VALUES ($1, $2, $3)
                 """,
                 signup_data.username,
-                signup_data.password,  # No encryption as requested
+                hashed_password,  # Store hashed password
                 signup_data.role
             )
             

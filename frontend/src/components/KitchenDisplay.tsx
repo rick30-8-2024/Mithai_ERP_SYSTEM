@@ -21,6 +21,23 @@ export default function KitchenDisplay() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Scroll to top when component mounts
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Ensure page is scrollable
+  useEffect(() => {
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'auto';
+    document.body.style.overflow = 'auto';
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
 
   // Update time every second
@@ -39,10 +56,8 @@ export default function KitchenDisplay() {
         limit: 200,
         offset: 0,
       });
-      // Filter only active work orders (not Draft or Completed)
-      setWorkOrders(res.items.filter(wo => 
-        wo.status === "Scheduled" || wo.status === "In Progress" || wo.status === "On Hold"
-      ));
+      // Show all work orders (including Draft if they have an assigned worker)
+      setWorkOrders(res.items);
     } catch (e: any) {
       setError(e?.message || "Failed to load work orders");
     } finally {
@@ -71,9 +86,11 @@ export default function KitchenDisplay() {
     }
   }
 
-  const pendingOrders = workOrders.filter(wo => wo.status === "Scheduled");
-  const inProgressOrders = workOrders.filter(wo => wo.status === "In Progress");
-  const onHoldOrders = workOrders.filter(wo => wo.status === "On Hold");
+  const pendingOrders = workOrders.filter(wo =>
+    (wo.status === "Scheduled" || wo.status === "Draft") && wo.assigned_worker
+  );
+  const inProgressOrders = workOrders.filter(wo => wo.status === "In Progress" || wo.status === "Paused");
+  const readyOrders = workOrders.filter(wo => wo.status === "Completed");
 
   return (
     <div className="page">
@@ -122,10 +139,10 @@ export default function KitchenDisplay() {
               <ArrowLeft width={20} height={20} />
             </button>
             <div>
-              <h1 className="title" style={{ margin: 0 }}>
+              <h1 className="title" style={{ margin: 0, fontSize: 20 }}>
                 Kitchen Display System
               </h1>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
+              <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 10 }}>
                 Real-time production monitoring
               </div>
             </div>
@@ -244,7 +261,7 @@ export default function KitchenDisplay() {
             >
               <Clock width={20} height={20} style={{ color: "#6b7280" }} />
               <h2 style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>
-                Scheduled ({pendingOrders.length})
+                Pending ({pendingOrders.length})
               </h2>
             </div>
             <div style={{ display: "grid", gap: 12 }}>
@@ -294,7 +311,7 @@ export default function KitchenDisplay() {
             </div>
           </div>
 
-          {/* On Hold Column */}
+          {/* Ready Column */}
           <div className="kitchen-column">
             <div
               style={{
@@ -308,20 +325,20 @@ export default function KitchenDisplay() {
                 borderRadius: 12,
               }}
             >
-              <CheckCircle2 width={20} height={20} style={{ color: "#eab308" }} />
+              <CheckCircle2 width={20} height={20} style={{ color: "#22c55e" }} />
               <h2 style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>
-                On Hold ({onHoldOrders.length})
+                Ready ({readyOrders.length})
               </h2>
             </div>
             <div style={{ display: "grid", gap: 12 }}>
-              {onHoldOrders.map((wo) => (
+              {readyOrders.map((wo) => (
                 <OrderCard
                   key={wo.id}
                   workOrder={wo}
                   onUpdateStatus={updateStatus}
-                  statusColor="yellow"
-                  nextStatus="In Progress"
-                  nextAction="Resume Production"
+                  statusColor="green"
+                  nextStatus="Completed"
+                  nextAction="Archive Order"
                 />
               ))}
             </div>
