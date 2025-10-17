@@ -8,12 +8,9 @@ import {
   User,
   Phone,
   MapPin,
-  Package,
   Pause,
   Play,
   CheckCircle,
-  AlertTriangle,
-  Navigation,
   ClipboardList,
   ChevronLeft,
   ChevronRight,
@@ -21,8 +18,6 @@ import {
   X,
   Trash2,
   Receipt,
-  FileText,
-  Printer,
 } from 'lucide-react';
 import { dispatchApi, type DispatchOrder, type FinishedGood, type WorkOrderForDispatch } from '../lib/api';
 

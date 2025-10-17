@@ -7,7 +7,6 @@ import {
   Plus,
   Calendar,
   Truck,
-  Package,
   MapPin,
   Phone,
   Mail,
@@ -19,7 +18,7 @@ import {
   ChevronUp,
   X
 } from 'lucide-react';
-import { purchaseOrdersApi, type PurchaseOrder, type PurchaseOrderItem } from '../lib/api';
+import { purchaseOrdersApi, type PurchaseOrder } from '../lib/api';
 
 // Modal Component
 type ModalProps = {
@@ -233,7 +232,7 @@ const getPriorityStyles = (priority: string) => {
   }
 };
 
-export default function PurchaseOrder() {
+export default function PurchaseOrderPage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterByStatus, setFilterByStatus] = useState('All');
@@ -318,237 +317,6 @@ export default function PurchaseOrder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterByStatus, filterBySupplier]);
 
-  // Remove all mock data below - it will be replaced
-  const [_mockData] = useState<PurchaseOrder[]>([
-    {
-      id: '1',
-      poNumber: 'PO-2025-001',
-      supplier: 'Amul Dairy Co-op',
-      supplierContact: '+91 98765 43210',
-      supplierEmail: 'orders@amul.coop',
-      supplierAddress: 'Anand, Gujarat 388001',
-      orderDate: '2025-01-15',
-      expectedDeliveryDate: '2025-01-22',
-      status: 'Confirmed',
-      priority: 'High',
-      totalAmount: 45750.00,
-      paidAmount: 0,
-      paymentTerms: '30 Days',
-      approvedBy: 'Amit Singh',
-      createdBy: 'Priya Sharma',
-      notes: 'Urgent requirement for festival production',
-      items: [
-        {
-          id: '1',
-          name: 'Milk Solids',
-          type: 'Raw Material',
-          category: 'Dairy Product',
-          quantity: 500,
-          unit: 'kg',
-          rate: 225.00,
-          totalAmount: 112500.00,
-          supplier: 'Amul Dairy Co-op',
-          supplierContact: '+91 98765 43210',
-          supplierEmail: 'orders@amul.coop',
-          brand: 'Amul',
-          grade: 'Premium',
-          description: 'High-quality milk solids for sweet production',
-          packingWeight: 25,
-          packingUnit: 'kg/bag',
-          expectedInwardDate: '2025-01-22',
-          deliveryStatus: 'In Transit',
-          qualityStatus: 'Pending'
-        },
-        {
-          id: '2',
-          name: 'Milk',
-          type: 'Raw Material',
-          category: 'Dairy Product',
-          quantity: 200,
-          unit: 'L',
-          rate: 80.00,
-          totalAmount: 16000.00,
-          supplier: 'Amul Dairy Co-op',
-          supplierContact: '+91 98765 43210',
-          supplierEmail: 'orders@amul.coop',
-          brand: 'Amul',
-          grade: 'Full Cream',
-          description: 'Fresh full cream milk for production',
-          packingWeight: 1,
-          packingUnit: 'L/packet',
-          expectedInwardDate: '2025-01-22',
-          deliveryStatus: 'In Transit',
-          qualityStatus: 'Pending'
-        }
-      ]
-    },
-    {
-      id: '2',
-      poNumber: 'PO-2025-002',
-      supplier: 'Bajaj Hindusthan Sugar',
-      supplierContact: '+91 98765 43211',
-      supplierEmail: 'sales@bajajsugar.com',
-      supplierAddress: 'Pune, Maharashtra 411001',
-      orderDate: '2025-01-16',
-      expectedDeliveryDate: '2025-01-25',
-      status: 'Sent',
-      priority: 'Medium',
-      totalAmount: 31250.00,
-      paidAmount: 0,
-      paymentTerms: '45 Days',
-      approvedBy: 'Amit Singh',
-      createdBy: 'Rajesh Kumar',
-      notes: 'Regular monthly sugar procurement',
-      items: [
-        {
-          id: '3',
-          name: 'Sugar',
-          type: 'Raw Material',
-          category: 'Sweetener',
-          quantity: 1000,
-          unit: 'kg',
-          rate: 31.25,
-          totalAmount: 31250.00,
-          supplier: 'Bajaj Hindusthan Sugar',
-          supplierContact: '+91 98765 43211',
-          supplierEmail: 'sales@bajajsugar.com',
-          brand: 'Shakti Bhog',
-          grade: 'Refined',
-          description: 'Premium refined sugar for sweet manufacturing',
-          packingWeight: 50,
-          packingUnit: 'kg/bag',
-          expectedInwardDate: '2025-01-25',
-          deliveryStatus: 'Pending',
-          qualityStatus: 'Pending'
-        }
-      ]
-    },
-    {
-      id: '3',
-      poNumber: 'PO-2025-003',
-      supplier: 'Dalda Foods Ltd',
-      supplierContact: '+91 98765 43212',
-      supplierEmail: 'orders@dalda.com',
-      supplierAddress: 'Mumbai, Maharashtra 400001',
-      orderDate: '2025-01-12',
-      expectedDeliveryDate: '2025-01-20',
-      actualDeliveryDate: '2025-01-19',
-      status: 'Completed',
-      priority: 'Low',
-      totalAmount: 18750.00,
-      paidAmount: 18750.00,
-      paymentTerms: 'Advance Payment',
-      approvedBy: 'Amit Singh',
-      createdBy: 'Priya Sharma',
-      notes: 'Quality checked and approved',
-      items: [
-        {
-          id: '4',
-          name: 'Vanaspati Ghee',
-          type: 'Raw Material',
-          category: 'Cooking Fat',
-          quantity: 100,
-          unit: 'kg',
-          rate: 187.50,
-          totalAmount: 18750.00,
-          supplier: 'Dalda Foods Ltd',
-          supplierContact: '+91 98765 43212',
-          supplierEmail: 'orders@dalda.com',
-          brand: 'Dalda',
-          grade: 'Commercial',
-          description: 'Premium vanaspati ghee for sweet preparation',
-          packingWeight: 15,
-          packingUnit: 'kg/tin',
-          expectedInwardDate: '2025-01-20',
-          deliveryStatus: 'Delivered',
-          qualityStatus: 'Approved'
-        }
-      ]
-    },
-    {
-      id: '4',
-      poNumber: 'PO-2025-004',
-      supplier: 'Traditional Sweets Factory',
-      supplierContact: '+91 98765 43213',
-      supplierEmail: 'orders@traditionalsweets.com',
-      supplierAddress: 'Agra, Uttar Pradesh 282001',
-      orderDate: '2025-01-17',
-      expectedDeliveryDate: '2025-01-28',
-      status: 'Confirmed',
-      priority: 'Medium',
-      totalAmount: 75000.00,
-      paidAmount: 25000.00,
-      paymentTerms: '50% Advance, 50% on Delivery',
-      approvedBy: 'Sneha Patel',
-      createdBy: 'Vikram Gupta',
-      notes: 'Bulk order for festival season',
-      items: [
-        {
-          id: '5',
-          name: 'Pedha',
-          type: 'Finished Good',
-          category: 'Traditional Sweet',
-          quantity: 200,
-          unit: 'pcs',
-          rate: 125.00,
-          totalAmount: 25000.00,
-          supplier: 'Traditional Sweets Factory',
-          supplierContact: '+91 98765 43213',
-          supplierEmail: 'orders@traditionalsweets.com',
-          brand: 'Royal Sweets',
-          grade: 'Premium',
-          description: 'Premium quality pedha for retail',
-          packingWeight: 250,
-          packingUnit: 'g/box',
-          expectedInwardDate: '2025-01-28',
-          deliveryStatus: 'Pending',
-          qualityStatus: 'Pending'
-        },
-        {
-          id: '6',
-          name: 'Barfi',
-          type: 'Finished Good',
-          category: 'Traditional Sweet',
-          quantity: 150,
-          unit: 'pcs',
-          rate: 200.00,
-          totalAmount: 30000.00,
-          supplier: 'Traditional Sweets Factory',
-          supplierContact: '+91 98765 43213',
-          supplierEmail: 'orders@traditionalsweets.com',
-          brand: 'Royal Sweets',
-          grade: 'Premium',
-          description: 'Premium silver barfi for special occasions',
-          packingWeight: 500,
-          packingUnit: 'g/box',
-          expectedInwardDate: '2025-01-28',
-          deliveryStatus: 'Pending',
-          qualityStatus: 'Pending'
-        },
-        {
-          id: '7',
-          name: 'Kesar Pedha',
-          type: 'Finished Good',
-          category: 'Premium Sweet',
-          quantity: 100,
-          unit: 'pcs',
-          rate: 200.00,
-          totalAmount: 20000.00,
-          supplier: 'Traditional Sweets Factory',
-          supplierContact: '+91 98765 43213',
-          supplierEmail: 'orders@traditionalsweets.com',
-          brand: 'Royal Sweets',
-          grade: 'Premium Plus',
-          description: 'Saffron pedha with premium ingredients',
-          packingWeight: 250,
-          packingUnit: 'g/box',
-          expectedInwardDate: '2025-01-28',
-          deliveryStatus: 'Pending',
-          qualityStatus: 'Pending'
-        }
-      ]
-    }
-  ]);
 
   const statuses = ['All', 'Draft', 'Sent', 'Confirmed', 'Partially Received', 'Completed', 'Cancelled'];
   const suppliers = ['All', 'Amul Dairy Co-op', 'Bajaj Hindusthan Sugar', 'Dalda Foods Ltd', 'Traditional Sweets Factory'];

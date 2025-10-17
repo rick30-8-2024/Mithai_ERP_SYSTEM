@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MoreVertical, Pencil, ArrowLeft } from "lucide-react";
+import { MoreVertical, ArrowLeft } from "lucide-react";
 import {
   inventoryApi,
   type InventoryItem,
@@ -137,36 +137,6 @@ function StatusBadge({ status }: { status: InventoryItem["status"] }) {
       }}
     >
       {status}
-    </span>
-  );
-}
-
-function CategoryBadge({ category }: { category: string }) {
-  const styles = useMemo(() => {
-    if (category === "Raw Material") {
-      return {
-        color: "#1e3a8a",
-        background: "#dbeafe",
-        border: "1.5px solid #3b82f6",
-      };
-    }
-    return {
-      color: "#7c2d12",
-      background: "#fed7aa",
-      border: "1.5px solid #f97316",
-    };
-  }, [category]);
-  return (
-    <span
-      style={{
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 800,
-        ...styles,
-      }}
-    >
-      {category}
     </span>
   );
 }

@@ -211,7 +211,7 @@ function PriorityBadge({ priority }: { priority: WorkOrder["priority"] }) {
   );
 }
 
-export default function WorkOrder() {
+export default function WorkOrderPage() {
   const navigate = useNavigate();
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -837,18 +837,7 @@ export default function WorkOrder() {
   );
 }
 
-const menuButtonStyle: React.CSSProperties = {
-  width: "100%",
-  textAlign: "left",
-  background: "transparent",
-  color: "var(--fg)",
-  border: "1.5px solid var(--border)",
-  padding: "10px 12px",
-  borderRadius: 10,
-  fontWeight: 700,
-  cursor: "pointer",
-  marginBottom: 8,
-};
+
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
