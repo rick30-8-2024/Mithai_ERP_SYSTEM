@@ -38,13 +38,13 @@ function Login() {
       console.log('Sign In response:', data, 'status:', res.status);
       
       if (res.ok) {
-        // Store credentials in localStorage
         localStorage.setItem('ERP_USERNAME', signin.username);
         localStorage.setItem('ERP_PASSWORD', signin.password);
+        localStorage.setItem('ERP_USER_PERMISSIONS', JSON.stringify(data.user?.permissions || []));
+        localStorage.setItem('ERP_USER_ROLE', data.user?.role || '');
         
         setMessage({ type: 'success', text: data.message || 'Login successful!' });
         
-        // Redirect to dashboard after a short delay
         setTimeout(() => {
           navigate('/dashboard');
         }, 1000);

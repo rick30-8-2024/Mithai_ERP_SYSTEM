@@ -70,6 +70,10 @@ function Dashboard() {
   const navigate = useNavigate();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [username] = useState<string>(() => localStorage.getItem('ERP_USERNAME') || 'User');
+  const [userPermissions] = useState<string[]>(() => {
+    const stored = localStorage.getItem('ERP_USER_PERMISSIONS');
+    return stored ? JSON.parse(stored) : [];
+  });
   const [hovered, setHovered] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -256,7 +260,9 @@ function Dashboard() {
             paddingBottom: 24
           }}
         >
-          {Object.entries(DASHBOARD_DATA[header]).map(([name, arr]) => {
+          {Object.entries(DASHBOARD_DATA[header])
+            .filter(([name]) => userPermissions.length === 0 || userPermissions.includes(name))
+            .map(([name, arr]) => {
             const desc = Array.isArray(arr) ? arr[0] : '';
             const isHovered = hovered === name;
             return (

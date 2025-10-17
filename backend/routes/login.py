@@ -30,10 +30,9 @@ async def login(login_data: LoginRequest):
         async with pool.acquire() as conn:
             print(f"[LOGIN] Database connection acquired")
             
-            # Fetch user from database
             print(f"[LOGIN] Fetching user '{login_data.username}' from database...")
             user = await conn.fetchrow(
-                "SELECT id, username, password, role, is_active, status FROM users WHERE username = $1",
+                "SELECT id, username, password, role, is_active, status, permissions FROM users WHERE username = $1",
                 login_data.username
             )
             
@@ -64,9 +63,16 @@ async def login(login_data: LoginRequest):
             
             print(f"[LOGIN] User found and active, verifying password...")
             
+            print(f"[LOGIN DEBUG] Stored password from DB: {user['password'][:50]}...")
+            print(f"[LOGIN DEBUG] Stored password type: {type(user['password'])}")
+            print(f"[LOGIN DEBUG] Stored password starts with: {user['password'][:4]}")
+            
             # Verify password using bcrypt
             password_bytes = login_data.password.encode('utf-8')
             stored_password_bytes = user['password'].encode('utf-8')
+            
+            print(f"[LOGIN DEBUG] Encoded stored password (first 50 bytes): {stored_password_bytes[:50]}")
+            print(f"[LOGIN DEBUG] Encoded stored password type: {type(stored_password_bytes)}")
             
             if not bcrypt.checkpw(password_bytes, stored_password_bytes):
                 print(f"[LOGIN ERROR] Password mismatch for user '{login_data.username}'")
@@ -77,7 +83,6 @@ async def login(login_data: LoginRequest):
             
             print(f"[LOGIN] Password verified successfully for user '{login_data.username}'")
         
-        # Return success response with user information
         print(f"[LOGIN] Login successful for user '{login_data.username}' with role '{user['role']}'")
         return {
             "status": "success",
@@ -85,7 +90,8 @@ async def login(login_data: LoginRequest):
             "user": {
                 "id": str(user['id']),
                 "username": user['username'],
-                "role": user['role']
+                "role": user['role'],
+                "permissions": user.get('permissions', [])
             }
         }
     

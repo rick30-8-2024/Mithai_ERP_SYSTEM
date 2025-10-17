@@ -45,9 +45,9 @@ function UserManagementComponent() {
   
   // Available permission cards
   const availablePermissions = [
-    'Inventory', 'Recipe Management', 'Work Order', 'Kitchen Display',
-    'Purchase Order', 'Send to Factory', 'Sales Order', 'Sales Order Approval',
-    'User Management', 'Customer Management', 'Accounting', 'Logistics & Routes',
+    'Inventory', 'Recipe Management', 'Work Order', 'My Work Orders', 'Kitchen Display',
+    'Purchase Order', 'Send to Factory', 'Sales Order', 'Sales Order Approval', 'Sales Order Dispatch',
+    'Gate Pass/Inward', 'User Management', 'Customer Management', 'Accounting', 'Logistics & Routes',
     'Quality Check', 'Payment Tracking', 'CRM'
   ];
 
