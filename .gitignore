@@ -152,7 +152,6 @@ cython_debug/
 *.db
 *.sqlite
 *.sqlite3
-*.sql
 *.dump
 
 # Alembic (database migrations)
