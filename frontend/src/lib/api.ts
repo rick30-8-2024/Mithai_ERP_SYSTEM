@@ -1,7 +1,7 @@
 /* Centralized API client for backend communication */
 
 export const BASE_URL =
-  (process.env.REACT_APP_API_URL as string) || "http://localhost:8080";
+  (process.env.REACT_APP_BACKEND_URL as string) || "http://localhost:8080";
 
 async function post<T>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
