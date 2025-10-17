@@ -288,6 +288,8 @@ function Dashboard() {
                     navigate('/send-to-factory');
                   } else if (l.includes('sales order approval')) {
                     navigate('/sales-order-approval');
+                  } else if (l.includes('sales order dispatch')) {
+                    navigate('/sales-order-dispatch');
                   } else if (l.includes('sales order')) {
                     navigate('/sales-orders');
                   } else if (l.includes('user management')) {
@@ -317,6 +319,8 @@ function Dashboard() {
                       navigate('/send-to-factory');
                     } else if (l.includes('sales order approval')) {
                       navigate('/sales-order-approval');
+                    } else if (l.includes('sales order dispatch')) {
+                      navigate('/sales-order-dispatch');
                     } else if (l.includes('sales order')) {
                       navigate('/sales-orders');
                     } else if (l.includes('user management')) {

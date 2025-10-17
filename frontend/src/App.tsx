@@ -14,6 +14,7 @@ import PurchaseOrder from './components/PurchaseOrder';
 import SendToFactory from './components/SendToFactory';
 import SalesOrder from './components/SalesOrder';
 import SalesOrderApproval from './components/SalesOrderApproval';
+import SalesOrderDispatch from './components/SalesOrderDispatch';
 import UserManagement from './components/UserManagement';
 import CustomerManagement from './components/CustomerManagement';
 
@@ -131,6 +132,15 @@ function App() {
           element={
             <ProtectedRoute>
               <SalesOrderApproval />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/sales-order-dispatch"
+          element={
+            <ProtectedRoute>
+              <SalesOrderDispatch />
             </ProtectedRoute>
           }
         />
