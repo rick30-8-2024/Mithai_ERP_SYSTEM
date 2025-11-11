@@ -16,11 +16,16 @@ async def initialize_database():
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         
-        sql_file_path = os.path.join(os.path.dirname(__file__), 'init_db.sql')
-        with open(sql_file_path, 'r') as f:
-            sql_script = f.read()
+        sql_file_1_path = os.path.join(os.path.dirname(__file__), 'init_db.sql')
+        sql_file_2_path = os.path.join(os.path.dirname(__file__), 'import_inventory_data.sql')
+        with open(sql_file_1_path, 'r') as f:
+            sql_script_1 = f.read()
+
+        with open(sql_file_2_path, 'r') as f:
+            sql_script_2 = f.read()
         
-        await conn.execute(sql_script)
+        await conn.execute(sql_script_1)
+        await conn.execute(sql_script_2)
         
         print("✓ Database tables initialized successfully")
         
