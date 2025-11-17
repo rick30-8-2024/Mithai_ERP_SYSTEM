@@ -236,7 +236,7 @@ export default function Inventory() {
   }
 
   return (
-    <div className="page">
+    <div className="page" style={{ height: "100vh", overflowY: "auto" }}>
       <style>{`
         /* Fix dropdown options in dark mode */
         [data-theme="dark"] select option {
@@ -423,8 +423,9 @@ export default function Inventory() {
             }}
           >
             <option>All</option>
-            <option>Raw Material</option>
-            <option>Finished Good</option>
+            <option>Finished Goods</option>
+            <option>Raw Materials</option>
+            <option>Packing Materials</option>
           </select>
           <select
             className="inventory-filter-select"
@@ -540,14 +541,16 @@ export default function Inventory() {
             >
               <div style={{ display: "grid", gap: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 900, fontSize: 16 }}>{it.name}</div>
+                  <div style={{ fontWeight: 900, fontSize: 16 }}>
+                    {it.name}
+                  </div>
                   <StatusBadge status={it.status} />
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <Info label="SKU" value={it.sku} />
                   
-                  {/* Common fields */}
                   {it.brand && <Info label="Brand" value={it.brand} />}
+                  
                   {it.grade && <Info label="Grade" value={it.grade} />}
                   
                   {/* Raw Material specific fields */}
@@ -563,6 +566,11 @@ export default function Inventory() {
                   <Info
                     label="Current Stock"
                     value={formatQty(it.current_stock, it.unit)}
+                  />
+                  
+                  <Info
+                    label="Cost/Unit"
+                    value={`₹${it.cost_per_unit.toFixed(2)}/${it.unit}`}
                   />
                   
                   {it.packing_weight && (
@@ -842,6 +850,7 @@ type AddOrEditValues = {
   current_stock: number;
   min_stock: number;
   max_stock: number;
+  cost_per_unit: number;
   brand?: string;
   grade?: string;
   packing_weight?: string;
@@ -868,27 +877,6 @@ function TypeSelectionModal({
         </div>
         <button
           className="btn"
-          onClick={() => onSelect("Raw Material")}
-          style={{
-            background: "var(--panel)",
-            color: "var(--fg)",
-            border: "1.5px solid var(--border)",
-            padding: "16px 20px",
-            borderRadius: 10,
-            fontWeight: 800,
-            cursor: "pointer",
-            textAlign: "left",
-            display: "grid",
-            gap: 6,
-          }}
-        >
-          <div style={{ fontSize: 16, fontWeight: 900 }}>Raw Material</div>
-          <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
-            Ingredients and materials used in production
-          </div>
-        </button>
-        <button
-          className="btn"
           onClick={() => onSelect("Finished Good")}
           style={{
             background: "var(--panel)",
@@ -903,9 +891,51 @@ function TypeSelectionModal({
             gap: 6,
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 900 }}>Finished Good</div>
+          <div style={{ fontSize: 16, fontWeight: 900 }}>Finished Goods</div>
           <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
             Final products ready for sale
+          </div>
+        </button>
+        <button
+          className="btn"
+          onClick={() => onSelect("Raw Material")}
+          style={{
+            background: "var(--panel)",
+            color: "var(--fg)",
+            border: "1.5px solid var(--border)",
+            padding: "16px 20px",
+            borderRadius: 10,
+            fontWeight: 800,
+            cursor: "pointer",
+            textAlign: "left",
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 900 }}>Raw Materials</div>
+          <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
+            Ingredients and materials used in production
+          </div>
+        </button>
+        <button
+          className="btn"
+          onClick={() => onSelect("Packing Material")}
+          style={{
+            background: "var(--panel)",
+            color: "var(--fg)",
+            border: "1.5px solid var(--border)",
+            padding: "16px 20px",
+            borderRadius: 10,
+            fontWeight: 800,
+            cursor: "pointer",
+            textAlign: "left",
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 900 }}>Packing Materials</div>
+          <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
+            Packaging materials and supplies
           </div>
         </button>
       </div>
@@ -937,6 +967,7 @@ function AddOrEditModal({
     current_stock: initial?.current_stock ?? 0,
     min_stock: initial?.min_stock ?? 0,
     max_stock: initial?.max_stock ?? 0,
+    cost_per_unit: initial?.cost_per_unit ?? 0,
     brand: initial?.brand || "",
     grade: initial?.grade || "",
     packing_weight: initial?.packing_weight || "",
@@ -947,6 +978,7 @@ function AddOrEditModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [autoGenerateSku, setAutoGenerateSku] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -958,6 +990,7 @@ function AddOrEditModal({
       current_stock: initial?.current_stock ?? 0,
       min_stock: initial?.min_stock ?? 0,
       max_stock: initial?.max_stock ?? 0,
+      cost_per_unit: initial?.cost_per_unit ?? 0,
       brand: initial?.brand || "",
       grade: initial?.grade || "",
       packing_weight: initial?.packing_weight || "",
@@ -968,16 +1001,63 @@ function AddOrEditModal({
     });
     setErr(null);
     setSubmitting(false);
+    setAutoGenerateSku(false);
   }, [open, initial, itemType]);
+
+  useEffect(() => {
+    if (!autoGenerateSku || isEdit) return;
+    
+    const generateSku = () => {
+      const brand = values.brand?.trim() || "";
+      const name = values.name?.trim() || "";
+      
+      if (!brand && !name) return "";
+      
+      const brandPart = brand
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      
+      const namePart = name
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      
+      const combined = brandPart && namePart
+        ? `${brandPart}-${namePart}`
+        : brandPart || namePart;
+      
+      return combined;
+    };
+    
+    const generatedSku = generateSku();
+    if (generatedSku) {
+      setValues((v) => ({ ...v, sku: generatedSku }));
+    }
+  }, [autoGenerateSku, values.brand, values.name, isEdit]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    
     if (!values.name.trim()) return setErr("Name is required");
     if (!values.sku.trim() && !isEdit) return setErr("SKU is required");
     if (!values.unit.trim()) return setErr("Unit is required");
+    
+    if (values.current_stock < 0) return setErr("Current stock cannot be negative");
+    if (values.min_stock < 0) return setErr("Min stock cannot be negative");
+    if (values.max_stock < 0) return setErr("Max stock cannot be negative");
     if (values.max_stock < values.min_stock)
       return setErr("Max stock must be greater than or equal to min stock");
+    
+    if (values.brand && values.brand.length > 100)
+      return setErr("Brand name too long (max 100 characters)");
+    if (values.grade && values.grade.length > 50)
+      return setErr("Grade too long (max 50 characters)");
+    
+    if (values.category === "Raw Material" && values.supplier && values.supplier.length > 200)
+      return setErr("Supplier name too long (max 200 characters)");
+    
+    if (values.category === "Finished Good" && values.category_type && values.category_type.length > 100)
+      return setErr("Category type too long (max 100 characters)");
 
     try {
       setSubmitting(true);
@@ -1008,16 +1088,48 @@ function AddOrEditModal({
               required
             />
           </Field>
-          <Field label="SKU">
+          <label style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>
+                SKU
+              </span>
+              {!isEdit && (
+                <label style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                  userSelect: "none"
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={autoGenerateSku}
+                    onChange={(e) => setAutoGenerateSku(e.target.checked)}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      cursor: "pointer"
+                    }}
+                  />
+                  Auto-generate SKU
+                </label>
+              )}
+            </div>
             <input
               value={values.sku}
               onChange={(e) => setValues((v) => ({ ...v, sku: e.target.value }))}
               placeholder={values.category === "Raw Material" ? "MS-001" : "PD-001"}
-              style={{ ...inputStyle, background: isEdit ? "rgba(127,127,127,0.08)" : "transparent" }}
+              style={{
+                ...inputStyle,
+                background: (isEdit || autoGenerateSku) ? "rgba(127,127,127,0.08)" : "transparent"
+              }}
               required={!isEdit}
-              disabled={isEdit}
+              disabled={isEdit || autoGenerateSku}
             />
-          </Field>
+          </label>
           <Field label="Category">
             <select
               value={values.category}
@@ -1027,8 +1139,9 @@ function AddOrEditModal({
               style={inputStyle}
               disabled={isEdit}
             >
-              <option>Raw Material</option>
               <option>Finished Good</option>
+              <option>Raw Material</option>
+              <option>Packing Material</option>
             </select>
           </Field>
           <Field label="Brand">
@@ -1089,6 +1202,20 @@ function AddOrEditModal({
               placeholder="kg / L / pcs"
               style={inputStyle}
               required
+            />
+          </Field>
+          <Field label="Cost Per Unit (₹)">
+            <input
+              type="number"
+              inputMode="decimal"
+              value={values.cost_per_unit}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, cost_per_unit: parseFloat(e.target.value || "0") }))
+              }
+              placeholder="0.00"
+              style={inputStyle}
+              min={0}
+              step="0.01"
             />
           </Field>
           <Field label="Packing Weight">

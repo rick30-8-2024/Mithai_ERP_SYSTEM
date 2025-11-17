@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database.db_pool import get_db_pool
@@ -24,7 +24,82 @@ class WorkOrderIngredient(BaseModel):
     unit: str
     supplier: Optional[str] = None
     grade: Optional[str] = None
-    cost: float = 0.0
+    cost: Optional[float] = None
+
+
+async def check_and_reserve_inventory(conn, ingredients: List[WorkOrderIngredient]) -> Tuple[bool, List[Dict]]:
+    """
+    Check if all ingredients are available in sufficient quantities and reserve them
+    Returns: (success: bool, insufficient_items: List[Dict])
+    """
+    insufficient_items = []
+    
+    for ing in ingredients:
+        inventory_row = await conn.fetchrow(
+            """
+            SELECT id, name, current_stock, unit, min_stock
+            FROM inventory
+            WHERE LOWER(name) = LOWER($1)
+            LIMIT 1
+            """,
+            ing.ingredient_name
+        )
+        
+        if not inventory_row:
+            insufficient_items.append({
+                "ingredient_name": ing.ingredient_name,
+                "required_quantity": ing.required_quantity,
+                "available_quantity": 0,
+                "unit": ing.unit,
+                "status": "not_found"
+            })
+            continue
+        
+        available = _to_float(inventory_row["current_stock"])
+        required = ing.required_quantity
+        
+        if available < required:
+            insufficient_items.append({
+                "ingredient_name": ing.ingredient_name,
+                "required_quantity": required,
+                "available_quantity": available,
+                "unit": ing.unit,
+                "status": "insufficient"
+            })
+    
+    if insufficient_items:
+        return False, insufficient_items
+    
+    for ing in ingredients:
+        await conn.execute(
+            """
+            UPDATE inventory
+            SET current_stock = current_stock - $1,
+                last_updated = NOW()
+            WHERE LOWER(name) = LOWER($2)
+            """,
+            ing.required_quantity,
+            ing.ingredient_name
+        )
+    
+    return True, []
+
+
+async def restore_inventory(conn, ingredients: List[Dict]):
+    """
+    Restore inventory quantities when a work order is deleted
+    """
+    for ing in ingredients:
+        await conn.execute(
+            """
+            UPDATE inventory
+            SET current_stock = current_stock + $1,
+                last_updated = NOW()
+            WHERE LOWER(name) = LOWER($2)
+            """,
+            ing["required_quantity"],
+            ing["ingredient_name"]
+        )
 
 
 class RecipeInfo(BaseModel):
@@ -326,7 +401,17 @@ async def create_work_order(payload: CreateRequest):
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Create work order
+                success, insufficient_items = await check_and_reserve_inventory(conn, payload.ingredients)
+                
+                if not success:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": "Insufficient inventory for work order",
+                            "insufficient_items": insufficient_items
+                        }
+                    )
+                
                 row = await conn.fetchrow(
                     """
                     INSERT INTO work_orders (work_order_number, recipe_id, batch_size, target_quantity,
@@ -348,7 +433,6 @@ async def create_work_order(payload: CreateRequest):
                 
                 work_order_id = row["id"]
                 
-                # Add ingredients
                 for ing in payload.ingredients:
                     await conn.execute(
                         """
@@ -638,22 +722,59 @@ async def delete_work_order(payload: DeleteRequest):
     try:
         pool = await get_db_pool()
         async with pool.acquire() as conn:
-            if payload.work_order_number:
-                result = await conn.execute(
-                    "DELETE FROM work_orders WHERE work_order_number = $1",
-                    payload.work_order_number
+            async with conn.transaction():
+                if payload.work_order_number:
+                    work_order_row = await conn.fetchrow(
+                        "SELECT id FROM work_orders WHERE work_order_number = $1",
+                        payload.work_order_number
+                    )
+                else:
+                    work_order_row = await conn.fetchrow(
+                        "SELECT id FROM work_orders WHERE id = $1::uuid",
+                        payload.id
+                    )
+                
+                if not work_order_row:
+                    raise HTTPException(status_code=404, detail="Work order not found")
+                
+                work_order_id = work_order_row["id"]
+                
+                ingredient_rows = await conn.fetch(
+                    """
+                    SELECT ingredient_name, required_quantity, unit
+                    FROM work_order_ingredients
+                    WHERE work_order_id = $1
+                    """,
+                    work_order_id
                 )
-            else:
-                result = await conn.execute(
-                    "DELETE FROM work_orders WHERE id = $1::uuid",
-                    payload.id
-                )
+                
+                ingredients = [
+                    {
+                        "ingredient_name": ing["ingredient_name"],
+                        "required_quantity": _to_float(ing["required_quantity"]),
+                        "unit": ing["unit"]
+                    }
+                    for ing in ingredient_rows
+                ]
+                
+                await restore_inventory(conn, ingredients)
+                
+                if payload.work_order_number:
+                    result = await conn.execute(
+                        "DELETE FROM work_orders WHERE work_order_number = $1",
+                        payload.work_order_number
+                    )
+                else:
+                    result = await conn.execute(
+                        "DELETE FROM work_orders WHERE id = $1::uuid",
+                        payload.id
+                    )
+                
+                rows_deleted = int(result.split()[-1]) if result else 0
+                if rows_deleted == 0:
+                    raise HTTPException(status_code=404, detail="Work order not found")
         
-        rows_deleted = int(result.split()[-1]) if result else 0
-        if rows_deleted == 0:
-            raise HTTPException(status_code=404, detail="Work order not found")
-        
-        return {"success": True, "message": "Work order deleted successfully"}
+        return {"success": True, "message": "Work order deleted successfully and inventory restored"}
     except HTTPException:
         raise
     except Exception as e:

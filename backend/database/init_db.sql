@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS inventory (
     current_stock NUMERIC NOT NULL DEFAULT 0,
     min_stock NUMERIC NOT NULL DEFAULT 0,
     max_stock NUMERIC NOT NULL,
+    cost_per_unit NUMERIC NOT NULL DEFAULT 0,
     last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_updated_by TEXT,
     brand TEXT,

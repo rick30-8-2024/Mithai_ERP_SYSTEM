@@ -104,7 +104,6 @@ export default function WorkOrders() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<StatusFilter>("all");
-  const [filterPriority, setFilterPriority] = useState<"all" | "Low" | "Medium" | "High" | "Urgent">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -180,11 +179,7 @@ export default function WorkOrders() {
       (filterStatus === "inProgress" && (order.status === "In Progress" || order.status === "Paused")) ||
       (filterStatus === "completed" && order.status === "Completed");
 
-    const matchesPriority =
-      filterPriority === "all" ||
-      order.priority === filterPriority;
-
-    return matchesStatus && matchesPriority;
+    return matchesStatus;
   });
 
   const formatTime = (minutes: number): string => {
@@ -304,7 +299,7 @@ export default function WorkOrders() {
   }).length;
 
   return (
-    <div className="page">
+    <div className="page" style={{ height: "100vh", overflowY: "auto" }}>
       <style>{`
         [data-theme="dark"] select option {
           background-color: #1a1a1a;
@@ -519,29 +514,6 @@ export default function WorkOrders() {
             <option value="inProgress">In Progress</option>
             <option value="completed">Completed</option>
           </select>
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value as any)}
-            aria-label="Filter by priority"
-            style={{
-              flex: "0 0 auto",
-              minWidth: "130px",
-              background: "transparent",
-              color: "var(--fg)",
-              border: "1.5px solid var(--border)",
-              padding: "10px 12px",
-              borderRadius: 10,
-              fontWeight: 700,
-              cursor: "pointer",
-              outline: "none",
-            }}
-          >
-            <option value="all">All Priority</option>
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
-            <option value="Urgent">Urgent</option>
-          </select>
         </section>
 
         {/* States */}
@@ -618,17 +590,6 @@ export default function WorkOrders() {
                           }}
                         >
                           {order.status}
-                        </span>
-                        <span
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            ...getPriorityStyles(order.priority),
-                          }}
-                        >
-                          {order.priority}
                         </span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fg)", marginBottom: 4 }}>
@@ -1257,21 +1218,6 @@ function getStatusStyles(status: string) {
       return { color: "#7c3aed", background: "#e9d5ff", border: "1.5px solid #a855f7" };
     case "On Hold":
       return { color: "#854d0e", background: "#fef08a", border: "1.5px solid #eab308" };
-    default:
-      return { color: "#4b5563", background: "#e5e7eb", border: "1.5px solid #9ca3af" };
-  }
-}
-
-function getPriorityStyles(priority: string) {
-  switch (priority) {
-    case "Urgent":
-      return { color: "#ffffff", background: "#dc2626", border: "1.5px solid #dc2626" };
-    case "High":
-      return { color: "#9a3412", background: "#fed7aa", border: "1.5px solid #f97316" };
-    case "Medium":
-      return { color: "#854d0e", background: "#fef08a", border: "1.5px solid #eab308" };
-    case "Low":
-      return { color: "#166534", background: "#bbf7d0", border: "1.5px solid #22c55e" };
     default:
       return { color: "#4b5563", background: "#e5e7eb", border: "1.5px solid #9ca3af" };
   }

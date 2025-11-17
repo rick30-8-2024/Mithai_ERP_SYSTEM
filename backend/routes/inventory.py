@@ -28,6 +28,7 @@ def _row_to_item(row) -> dict:
     current = _to_float(row["current_stock"])
     min_s = _to_float(row["min_stock"])
     max_s = _to_float(row["max_stock"])
+    cost = _to_float(row.get("cost_per_unit", 0))
     return {
         "id": str(row["id"]),
         "name": row["name"],
@@ -37,6 +38,7 @@ def _row_to_item(row) -> dict:
         "current_stock": current,
         "min_stock": min_s,
         "max_stock": max_s,
+        "cost_per_unit": cost,
         "status": _compute_status(current, min_s),
         "last_updated": row["last_updated"].isoformat() if row["last_updated"] else None,
         "last_updated_by": row.get("last_updated_by"),
@@ -76,6 +78,7 @@ class CreateRequest(BaseModel):
     current_stock: float = 0
     min_stock: float = 0
     max_stock: float
+    cost_per_unit: float = 0
     last_updated_by: Optional[str] = None
     # Shared fields
     brand: Optional[str] = None
@@ -99,6 +102,7 @@ class UpdateRequest(BaseModel):
     current_stock: Optional[float] = None
     min_stock: Optional[float] = None
     max_stock: Optional[float] = None
+    cost_per_unit: Optional[float] = None
     last_updated_by: Optional[str] = None
     # Shared fields
     brand: Optional[str] = None
@@ -123,7 +127,7 @@ async def list_inventory(payload: ListRequest):
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
+                SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
                        brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 FROM inventory
                 WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2)
@@ -156,7 +160,7 @@ async def get_inventory_item(payload: GetRequest):
             if payload.sku:
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
+                    SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
                            brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                     FROM inventory WHERE sku = $1
                     """,
@@ -165,7 +169,7 @@ async def get_inventory_item(payload: GetRequest):
             else:
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
+                    SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
                            brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                     FROM inventory WHERE id = $1::uuid
                     """,
@@ -187,14 +191,14 @@ async def create_inventory_item(payload: CreateRequest):
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO inventory (name, sku, category, unit, current_stock, min_stock, max_stock, last_updated_by,
+                INSERT INTO inventory (name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated_by,
                                      brand, grade, packing_weight, supplier, category_type, packing_qty, factory)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
                           brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 """,
                 payload.name, payload.sku, payload.category, payload.unit,
-                payload.current_stock, payload.min_stock, payload.max_stock, payload.last_updated_by,
+                payload.current_stock, payload.min_stock, payload.max_stock, payload.cost_per_unit, payload.last_updated_by,
                 payload.brand, payload.grade, payload.packing_weight, payload.supplier, payload.category_type, payload.packing_qty, payload.factory
             )
         return _row_to_item(row)
@@ -229,6 +233,9 @@ async def update_inventory_item(payload: UpdateRequest):
     if payload.max_stock is not None:
         fields.append("max_stock = ${}")
         values.append(payload.max_stock)
+    if payload.cost_per_unit is not None:
+        fields.append("cost_per_unit = ${}")
+        values.append(payload.cost_per_unit)
     if payload.last_updated_by is not None:
         fields.append("last_updated_by = ${}")
         values.append(payload.last_updated_by)

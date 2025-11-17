@@ -173,6 +173,7 @@ async def list_recipes(payload: ListRequest):
                 instructions = [inst["instruction"] for inst in instruction_rows]
             
             items.append(_row_to_recipe(row, ingredients, instructions))
+            print({"items": items, "count": len(items)})
         
         return {"items": items, "count": len(items)}
     except Exception as e:

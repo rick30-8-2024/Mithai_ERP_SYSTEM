@@ -23,10 +23,14 @@ async function post<T>(path: string, body?: unknown, init?: RequestInit): Promis
   }
 
   if (!res.ok) {
-    const msg =
-      (data && (data.detail || data.message || data.error)) ||
-      `HTTP ${res.status}`;
-    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    const detail = data && (data.detail || data.message || data.error);
+    const error: any = new Error(
+      typeof detail === "string" ? detail : (detail?.message || `HTTP ${res.status}`)
+    );
+    if (typeof detail === "object") {
+      error.detail = detail;
+    }
+    throw error;
   }
 
   return data as T;
@@ -34,7 +38,7 @@ async function post<T>(path: string, body?: unknown, init?: RequestInit): Promis
 
 /* Inventory types */
 
-export type InventoryCategory = "Raw Material" | "Finished Good";
+export type InventoryCategory = "Raw Material" | "Finished Good" | "Packing Material";
 
 export interface InventoryItem {
   id: string;
@@ -45,6 +49,7 @@ export interface InventoryItem {
   current_stock: number;
   min_stock: number;
   max_stock: number;
+  cost_per_unit: number;
   status: "In Stock" | "Low Stock" | "Out of Stock";
   last_updated: string | null;
   last_updated_by: string | null;
@@ -88,6 +93,7 @@ export interface CreateRequest {
   current_stock?: number;
   min_stock?: number;
   max_stock: number;
+  cost_per_unit?: number;
   last_updated_by?: string;
   // Shared fields
   brand?: string;
@@ -111,6 +117,7 @@ export interface UpdateRequest {
   current_stock?: number;
   min_stock?: number;
   max_stock?: number;
+  cost_per_unit?: number;
   last_updated_by?: string;
   // Shared fields
   brand?: string;
@@ -182,6 +189,7 @@ export interface RecipeIngredient {
   supplier?: string;
   grade?: string;
   cost: number;
+  cost_per_unit?: number;
 }
 
 export interface Recipe {

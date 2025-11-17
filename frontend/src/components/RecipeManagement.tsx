@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, X, Trash2 } from "lucide-react";
-import { recipesApi, type Recipe, type RecipeIngredient } from "../lib/api";
+import { ArrowLeft, Plus, X, Trash2, ChevronDown } from "lucide-react";
+import { recipesApi, inventoryApi, type Recipe, type RecipeIngredient, type InventoryItem } from "../lib/api";
 
 type StatusFilter = "All" | "Active" | "Draft" | "Archived";
 type DifficultyFilter = "All" | "Easy" | "Medium" | "Hard";
@@ -824,6 +824,161 @@ function IngredientsModal({
     </Modal>
   );
 }
+type IngredientAutocompleteProps = {
+  value: string;
+  onSelect: (item: InventoryItem) => void;
+  onChange: (value: string) => void;
+  style?: React.CSSProperties;
+};
+
+function IngredientAutocomplete({ value, onSelect, onChange, style }: IngredientAutocompleteProps) {
+  const [open, setOpen] = useState(false);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const fetchInventory = async () => {
+      if (!value || value.length < 1) {
+        setInventory([]);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await inventoryApi.list({
+          query: value,
+          limit: 20,
+          offset: 0,
+        });
+        setInventory(res.items);
+      } catch (e) {
+        console.error("Failed to fetch inventory:", e);
+        setInventory([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const t = setTimeout(() => {
+      fetchInventory();
+    }, 300);
+
+    return () => clearTimeout(t);
+  }, [value]);
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative", width: "100%" }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <input
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search inventory..."
+          style={style}
+          autoComplete="off"
+        />
+        <ChevronDown 
+          width={16} 
+          height={16} 
+          style={{
+            position: "absolute",
+            right: 12,
+            pointerEvents: "none",
+            color: "var(--muted)"
+          }}
+        />
+      </div>
+
+      {open && value && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            background: "var(--panel)",
+            border: "1.5px solid var(--border)",
+            borderRadius: 10,
+            maxHeight: 300,
+            overflowY: "auto",
+            boxShadow: "var(--shadow)",
+          }}
+        >
+          {loading && (
+            <div style={{ padding: 12, color: "var(--muted)", textAlign: "center" }}>
+              Loading...
+            </div>
+          )}
+          
+          {!loading && inventory.length === 0 && (
+            <div style={{ padding: 12, color: "var(--muted)", textAlign: "center" }}>
+              No ingredients found in inventory
+            </div>
+          )}
+
+          {!loading && inventory.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onSelect(item);
+                setOpen(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "transparent",
+                border: "none",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                borderBottom: "1px solid var(--border)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--bg)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--fg)" }}>
+                {item.name}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                SKU: {item.sku}
+                {item.brand && ` • Brand: ${item.brand}`}
+                {item.grade && ` • Grade: ${item.grade}`}
+                {item.supplier && ` • Supplier: ${item.supplier}`}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                Stock: {item.current_stock} {item.unit} • Status: {item.status}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 type AddOrEditValues = {
   name: string;
@@ -878,6 +1033,7 @@ function AddOrEditModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [autoGenerateSku, setAutoGenerateSku] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -901,13 +1057,61 @@ function AddOrEditModal({
     });
     setErr(null);
     setSubmitting(false);
+    setAutoGenerateSku(false);
   }, [open, initial]);
+
+  useEffect(() => {
+    if (!autoGenerateSku || isEdit) return;
+    
+    const generateSku = () => {
+      const brand = values.brand?.trim() || "";
+      const name = values.name?.trim() || "";
+      
+      if (!brand && !name) return "";
+      
+      const brandPart = brand
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      
+      const namePart = name
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      
+      const combined = brandPart && namePart
+        ? `${brandPart}-${namePart}`
+        : brandPart || namePart;
+      
+      return combined;
+    };
+    
+    const generatedSku = generateSku();
+    if (generatedSku) {
+      setValues((v) => ({ ...v, sku: generatedSku }));
+    }
+  }, [autoGenerateSku, values.brand, values.name, isEdit]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     if (!values.name.trim()) return setErr("Name is required");
     if (!values.sku.trim() && !isEdit) return setErr("SKU is required");
+
+    if (values.ingredients.length === 0) {
+      return setErr("At least one ingredient is required");
+    }
+
+    for (let i = 0; i < values.ingredients.length; i++) {
+      const ing = values.ingredients[i];
+      if (!ing.ingredient_name.trim()) {
+        return setErr(`Ingredient #${i + 1}: Name is required`);
+      }
+      if (!ing.unit.trim()) {
+        return setErr(`Ingredient #${i + 1}: Unit is required`);
+      }
+      if (ing.quantity <= 0) {
+        return setErr(`Ingredient #${i + 1}: Quantity must be greater than 0`);
+      }
+    }
 
     try {
       setSubmitting(true);
@@ -936,9 +1140,14 @@ function AddOrEditModal({
   const updateIngredient = (idx: number, field: keyof RecipeIngredient, value: any) => {
     setValues((v) => ({
       ...v,
-      ingredients: v.ingredients.map((ing, i) =>
-        i === idx ? { ...ing, [field]: value } : ing
-      ),
+      ingredients: v.ingredients.map((ing, i) => {
+        if (i !== idx) return ing;
+        const updated = { ...ing, [field]: value };
+        if (field === "quantity" && ing.cost_per_unit) {
+          updated.cost = value * ing.cost_per_unit;
+        }
+        return updated;
+      }),
     }));
   };
 
@@ -977,16 +1186,48 @@ function AddOrEditModal({
               required
             />
           </Field>
-          <Field label="SKU">
+          <label style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>
+                SKU
+              </span>
+              {!isEdit && (
+                <label style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                  userSelect: "none"
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={autoGenerateSku}
+                    onChange={(e) => setAutoGenerateSku(e.target.checked)}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      cursor: "pointer"
+                    }}
+                  />
+                  Auto-generate SKU
+                </label>
+              )}
+            </div>
             <input
               value={values.sku}
               onChange={(e) => setValues((v) => ({ ...v, sku: e.target.value }))}
               placeholder="PD-001"
-              style={{ ...inputStyle, background: isEdit ? "rgba(127,127,127,0.08)" : "transparent" }}
+              style={{
+                ...inputStyle,
+                background: (isEdit || autoGenerateSku) ? "rgba(127,127,127,0.08)" : "transparent"
+              }}
               required={!isEdit}
-              disabled={isEdit}
+              disabled={isEdit || autoGenerateSku}
             />
-          </Field>
+          </label>
           <Field label="Category">
             <input
               value={values.category}
@@ -1122,10 +1363,28 @@ function AddOrEditModal({
           {values.ingredients.map((ing, idx) => (
             <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr auto", gap: 8, marginBottom: 8, alignItems: "end" }}>
               <Field label="Name">
-                <input
+                <IngredientAutocomplete
                   value={ing.ingredient_name}
-                  onChange={(e) => updateIngredient(idx, "ingredient_name", e.target.value)}
-                  placeholder="Milk Solids"
+                  onChange={(value) => updateIngredient(idx, "ingredient_name", value)}
+                  onSelect={(item) => {
+                    setValues((v) => ({
+                      ...v,
+                      ingredients: v.ingredients.map((ingredient, i) => {
+                        if (i !== idx) return ingredient;
+                        const quantity = ingredient.quantity || 0;
+                        const cost = quantity * item.cost_per_unit;
+                        return {
+                          ...ingredient,
+                          ingredient_name: item.name,
+                          unit: item.unit,
+                          supplier: item.supplier || "",
+                          grade: item.grade || "",
+                          cost_per_unit: item.cost_per_unit,
+                          cost: cost,
+                        };
+                      }),
+                    }));
+                  }}
                   style={inputStyle}
                 />
               </Field>
@@ -1133,8 +1392,24 @@ function AddOrEditModal({
                 <input
                   type="number"
                   value={ing.quantity}
-                  onChange={(e) => updateIngredient(idx, "quantity", parseFloat(e.target.value || "0"))}
+                  onChange={(e) => {
+                    const newQty = parseFloat(e.target.value || "0");
+                    const costPerUnit = ing.cost_per_unit || 0;
+                    setValues((v) => ({
+                      ...v,
+                      ingredients: v.ingredients.map((ingredient, i) => {
+                        if (i !== idx) return ingredient;
+                        return {
+                          ...ingredient,
+                          quantity: newQty,
+                          cost: newQty * costPerUnit,
+                        };
+                      }),
+                    }));
+                  }}
                   style={inputStyle}
+                  min={0}
+                  step="0.01"
                 />
               </Field>
               <Field label="Unit">
@@ -1142,31 +1417,35 @@ function AddOrEditModal({
                   value={ing.unit}
                   onChange={(e) => updateIngredient(idx, "unit", e.target.value)}
                   placeholder="g"
-                  style={inputStyle}
+                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
+                  readOnly
                 />
               </Field>
               <Field label="Supplier">
                 <input
                   value={ing.supplier || ""}
                   onChange={(e) => updateIngredient(idx, "supplier", e.target.value)}
-                  placeholder="Amul"
-                  style={inputStyle}
+                  placeholder="Auto"
+                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
+                  readOnly
                 />
               </Field>
               <Field label="Grade">
                 <input
                   value={ing.grade || ""}
                   onChange={(e) => updateIngredient(idx, "grade", e.target.value)}
-                  placeholder="Premium"
-                  style={inputStyle}
+                  placeholder="Auto"
+                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
+                  readOnly
                 />
               </Field>
-              <Field label="Cost">
+              <Field label="Cost (₹)">
                 <input
                   type="number"
-                  value={ing.cost}
+                  value={ing.cost.toFixed(2)}
                   onChange={(e) => updateIngredient(idx, "cost", parseFloat(e.target.value || "0"))}
-                  style={inputStyle}
+                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
+                  readOnly
                 />
               </Field>
               <button
