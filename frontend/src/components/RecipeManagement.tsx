@@ -135,13 +135,6 @@ export default function RecipeManagement() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState<Recipe | null>(null);
 
-  // Statistics
-  const stats = useMemo(() => {
-    return {
-      total: recipes.length,
-    };
-  }, [recipes]);
-
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
@@ -556,23 +549,6 @@ export default function RecipeManagement() {
           }
         }}
       />
-    </div>
-  );
-}
-
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div
-      style={{
-        background: "var(--panel)",
-        border: "1px solid var(--border)",
-        borderRadius: 12,
-        padding: 16,
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 28, fontWeight: 900, color, marginBottom: 4 }}>{value}</div>
-      <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>{label}</div>
     </div>
   );
 }
