@@ -218,6 +218,9 @@ async def update_inventory_item(payload: UpdateRequest):
     if payload.name is not None:
         fields.append("name = ${}")
         values.append(payload.name)
+    if payload.sku is not None and payload.id is not None:
+        fields.append("sku = ${}")
+        values.append(payload.sku)
     if payload.category is not None:
         fields.append("category = ${}")
         values.append(payload.category)
@@ -273,26 +276,26 @@ async def update_inventory_item(payload: UpdateRequest):
     try:
         pool = await get_db_pool()
         async with pool.acquire() as conn:
-            if payload.sku:
-                where_param_index = len(values) + 1
-                sql = f"""
-                    UPDATE inventory
-                    SET {set_sql}
-                    WHERE sku = ${where_param_index}
-                    RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
-                              brand, grade, packing_weight, supplier, category_type, packing_qty, factory
-                """
-                row = await conn.fetchrow(sql, *values, payload.sku)
-            else:
+            if payload.id:
                 where_param_index = len(values) + 1
                 sql = f"""
                     UPDATE inventory
                     SET {set_sql}
                     WHERE id = ${where_param_index}::uuid
-                    RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, last_updated, last_updated_by,
+                    RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
                               brand, grade, packing_weight, supplier, category_type, packing_qty, factory
                 """
                 row = await conn.fetchrow(sql, *values, payload.id)
+            else:
+                where_param_index = len(values) + 1
+                sql = f"""
+                    UPDATE inventory
+                    SET {set_sql}
+                    WHERE sku = ${where_param_index}
+                    RETURNING id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
+                              brand, grade, packing_weight, supplier, category_type, packing_qty, factory
+                """
+                row = await conn.fetchrow(sql, *values, payload.sku)
 
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")

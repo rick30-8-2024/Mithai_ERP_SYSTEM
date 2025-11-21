@@ -422,10 +422,10 @@ export default function Inventory() {
               fontWeight: 700,
             }}
           >
-            <option>All</option>
-            <option>Finished Goods</option>
-            <option>Raw Materials</option>
-            <option>Packing Materials</option>
+            <option value="All">All</option>
+            <option value="Finished Goods">Finished Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Packing Materials">Packing Materials</option>
           </select>
           <select
             className="inventory-filter-select"
@@ -553,14 +553,16 @@ export default function Inventory() {
                   
                   {it.grade && <Info label="Grade" value={it.grade} />}
                   
-                  {/* Raw Material specific fields */}
                   {it.category === "Raw Material" && it.supplier && (
                     <Info label="Supplier" value={it.supplier} />
                   )}
                   
-                  {/* Finished Good specific fields */}
                   {it.category === "Finished Good" && it.category_type && (
                     <Info label="Category" value={it.category_type} />
+                  )}
+                  
+                  {it.category === "Packing Material" && it.supplier && (
+                    <Info label="Supplier" value={it.supplier} />
                   )}
                   
                   <Info
@@ -766,9 +768,7 @@ export default function Inventory() {
         onClose={() => setEditOpen(false)}
         onSubmit={async (values) => {
           const id = selected?.id;
-          const sku = selected?.sku;
-          const { sku: _omitSku, ...rest } = values as any;
-          await inventoryApi.update({ id, sku, ...rest, last_updated_by: currentUser });
+          await inventoryApi.update({ id, ...values, last_updated_by: currentUser });
           setEditOpen(false);
           await refresh();
         }}
@@ -1005,7 +1005,7 @@ function AddOrEditModal({
   }, [open, initial, itemType]);
 
   useEffect(() => {
-    if (!autoGenerateSku || isEdit) return;
+    if (!autoGenerateSku) return;
     
     const generateSku = () => {
       const brand = values.brand?.trim() || "";
@@ -1032,7 +1032,7 @@ function AddOrEditModal({
     if (generatedSku) {
       setValues((v) => ({ ...v, sku: generatedSku }));
     }
-  }, [autoGenerateSku, values.brand, values.name, isEdit]);
+  }, [autoGenerateSku, values.brand, values.name]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1053,7 +1053,7 @@ function AddOrEditModal({
     if (values.grade && values.grade.length > 50)
       return setErr("Grade too long (max 50 characters)");
     
-    if (values.category === "Raw Material" && values.supplier && values.supplier.length > 200)
+    if ((values.category === "Raw Material" || values.category === "Packing Material") && values.supplier && values.supplier.length > 200)
       return setErr("Supplier name too long (max 200 characters)");
     
     if (values.category === "Finished Good" && values.category_type && values.category_type.length > 100)
@@ -1093,30 +1093,28 @@ function AddOrEditModal({
               <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>
                 SKU
               </span>
-              {!isEdit && (
-                <label style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--muted)",
-                  cursor: "pointer",
-                  userSelect: "none"
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={autoGenerateSku}
-                    onChange={(e) => setAutoGenerateSku(e.target.checked)}
-                    style={{
-                      width: 16,
-                      height: 16,
-                      cursor: "pointer"
-                    }}
-                  />
-                  Auto-generate SKU
-                </label>
-              )}
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--muted)",
+                cursor: "pointer",
+                userSelect: "none"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={autoGenerateSku}
+                  onChange={(e) => setAutoGenerateSku(e.target.checked)}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    cursor: "pointer"
+                  }}
+                />
+                Auto-generate SKU
+              </label>
             </div>
             <input
               value={values.sku}
@@ -1124,10 +1122,10 @@ function AddOrEditModal({
               placeholder={values.category === "Raw Material" ? "MS-001" : "PD-001"}
               style={{
                 ...inputStyle,
-                background: (isEdit || autoGenerateSku) ? "rgba(127,127,127,0.08)" : "transparent"
+                background: autoGenerateSku ? "rgba(127,127,127,0.08)" : "transparent"
               }}
               required={!isEdit}
-              disabled={isEdit || autoGenerateSku}
+              disabled={autoGenerateSku}
             />
           </label>
           <Field label="Category">
@@ -1137,11 +1135,10 @@ function AddOrEditModal({
                 setValues((v) => ({ ...v, category: e.target.value as InventoryCategory }))
               }
               style={inputStyle}
-              disabled={isEdit}
             >
-              <option>Finished Good</option>
-              <option>Raw Material</option>
-              <option>Packing Material</option>
+              <option value="Finished Goods">Finished Goods</option>
+              <option value="Raw Materials">Raw Materials</option>
+              <option value="Packing Materials">Packing Materials</option>
             </select>
           </Field>
           <Field label="Brand">
@@ -1161,7 +1158,6 @@ function AddOrEditModal({
             />
           </Field>
           
-          {/* Raw Material specific fields */}
           {values.category === "Raw Material" && (
             <Field label="Supplier">
               <input
@@ -1173,7 +1169,17 @@ function AddOrEditModal({
             </Field>
           )}
           
-          {/* Finished Good specific fields */}
+          {values.category === "Packing Material" && (
+            <Field label="Supplier">
+              <input
+                value={values.supplier || ""}
+                onChange={(e) => setValues((v) => ({ ...v, supplier: e.target.value }))}
+                placeholder="Packaging Supplier"
+                style={inputStyle}
+              />
+            </Field>
+          )}
+          
           {values.category === "Finished Good" && (
             <>
               <Field label="Category Type">

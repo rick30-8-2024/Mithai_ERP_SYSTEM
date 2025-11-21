@@ -922,7 +922,7 @@ function CreateWorkOrderModal({
         if (!open) return;
         // Load recipes
         recipesApi.list({ limit: 100 }).then(res => {
-            setRecipes(res.items.filter(r => r.status === "Active"));
+            setRecipes(res.items);
         });
         // Load users for worker assignment
         usersApi.list().then(res => {
@@ -957,7 +957,6 @@ function CreateWorkOrderModal({
                 required_quantity: ing.quantity * batchSize,
                 actual_quantity: ing.quantity * batchSize,
                 unit: ing.unit,
-                supplier: ing.supplier,
                 grade: ing.grade,
                 cost: ing.cost * batchSize,
             }));

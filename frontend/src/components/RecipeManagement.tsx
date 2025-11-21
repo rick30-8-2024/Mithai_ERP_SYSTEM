@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, X, Trash2, ChevronDown } from "lucide-react";
 import { recipesApi, inventoryApi, type Recipe, type RecipeIngredient, type InventoryItem } from "../lib/api";
 
-type StatusFilter = "All" | "Active" | "Draft" | "Archived";
-type DifficultyFilter = "All" | "Easy" | "Medium" | "Hard";
 
 type ModalProps = {
   open: boolean;
@@ -116,87 +114,12 @@ function Field({
   );
 }
 
-function StatusBadge({ status }: { status: Recipe["status"] }) {
-  const styles = useMemo(() => {
-    if (status === "Active") {
-      return {
-        color: "#166534",
-        background: "#bbf7d0",
-        border: "1.5px solid #22c55e",
-      };
-    }
-    if (status === "Draft") {
-      return {
-        color: "#854d0e",
-        background: "#fef08a",
-        border: "1.5px solid #eab308",
-      };
-    }
-    return {
-      color: "#4b5563",
-      background: "#e5e7eb",
-      border: "1.5px solid #9ca3af",
-    };
-  }, [status]);
-  return (
-    <span
-      style={{
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 800,
-        ...styles,
-      }}
-    >
-      {status}
-    </span>
-  );
-}
-
-function DifficultyBadge({ difficulty }: { difficulty: Recipe["difficulty"] }) {
-  const styles = useMemo(() => {
-    if (difficulty === "Easy") {
-      return {
-        color: "#166534",
-        background: "#bbf7d0",
-        border: "1.5px solid #22c55e",
-      };
-    }
-    if (difficulty === "Medium") {
-      return {
-        color: "#854d0e",
-        background: "#fef08a",
-        border: "1.5px solid #eab308",
-      };
-    }
-    return {
-      color: "#ffffff",
-      background: "#dc2626",
-      border: "1.5px solid #dc2626",
-    };
-  }, [difficulty]);
-  return (
-    <span
-      style={{
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 800,
-        ...styles,
-      }}
-    >
-      {difficulty}
-    </span>
-  );
-}
 
 export default function RecipeManagement() {
   const navigate = useNavigate();
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("All");
-  const [difficulty, setDifficulty] = useState<DifficultyFilter>("All");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -216,9 +139,6 @@ export default function RecipeManagement() {
   const stats = useMemo(() => {
     return {
       total: recipes.length,
-      active: recipes.filter(r => r.status === "Active").length,
-      draft: recipes.filter(r => r.status === "Draft").length,
-      archived: recipes.filter(r => r.status === "Archived").length,
     };
   }, [recipes]);
 
@@ -234,8 +154,6 @@ export default function RecipeManagement() {
     try {
       const res = await recipesApi.list({
         query,
-        status: status === "All" ? null : status,
-        difficulty: difficulty === "All" ? null : difficulty,
         limit: 200,
         offset: 0,
       });
@@ -253,7 +171,7 @@ export default function RecipeManagement() {
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, status, difficulty]);
+  }, [query]);
 
   function openEdit(recipe: Recipe) {
     setSelected(recipe);
@@ -380,14 +298,6 @@ export default function RecipeManagement() {
           </label>
         </section>
 
-        {/* Statistics Cards */}
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 18 }}>
-          <StatCard label="Total Recipes" value={stats.total} color="#64748b" />
-          <StatCard label="Active" value={stats.active} color="#22c55e" />
-          <StatCard label="Draft" value={stats.draft} color="#eab308" />
-          <StatCard label="Archived" value={stats.archived} color="#9ca3af" />
-        </section>
-
         {/* Search and Filters */}
         <section
           style={{
@@ -402,7 +312,7 @@ export default function RecipeManagement() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, SKU, category, or brand..."
+              placeholder="Search by name, SKU, or brand..."
               aria-label="Search recipes"
               style={{
                 width: "87%",
@@ -416,46 +326,6 @@ export default function RecipeManagement() {
               }}
             />
           </div>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            aria-label="Filter by status"
-            style={{
-              flex: "0 0 auto",
-              minWidth: "120px",
-              background: "transparent",
-              color: "var(--fg)",
-              border: "1.5px solid var(--border)",
-              padding: "8px 10px",
-              borderRadius: 10,
-              fontWeight: 700,
-            }}
-          >
-            <option>All</option>
-            <option>Active</option>
-            <option>Draft</option>
-            <option>Archived</option>
-          </select>
-          <select
-            value={difficulty}
-            onChange={(e) => setDifficulty(e.target.value as DifficultyFilter)}
-            aria-label="Filter by difficulty"
-            style={{
-              flex: "0 0 auto",
-              minWidth: "120px",
-              background: "transparent",
-              color: "var(--fg)",
-              border: "1.5px solid var(--border)",
-              padding: "8px 10px",
-              borderRadius: 10,
-              fontWeight: 700,
-            }}
-          >
-            <option>All</option>
-            <option>Easy</option>
-            <option>Medium</option>
-            <option>Hard</option>
-          </select>
           <button
             className="btn"
             type="button"
@@ -528,7 +398,6 @@ export default function RecipeManagement() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 12 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>{recipe.name}</div>
-                    <div style={{ fontSize: 14, color: "var(--fg)", fontWeight: 600 }}>{recipe.category}</div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>SKU: {recipe.sku}</div>
                   </div>
                   <button
@@ -560,17 +429,6 @@ export default function RecipeManagement() {
                   <Info label="Total Time" value={`${recipe.preparation_time + recipe.cooking_time}min`} />
                   <Info label="Total Cost" value={`₹${recipe.total_cost.toFixed(2)}`} />
                   <Info label="Ingredients" value={`${recipe.ingredients.length} items`} />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>Status</div>
-                    <StatusBadge status={recipe.status} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>Difficulty</div>
-                    <DifficultyBadge difficulty={recipe.difficulty} />
-                  </div>
                 </div>
 
                 {recipe.brand && (
@@ -673,9 +531,10 @@ export default function RecipeManagement() {
         onClose={() => setEditOpen(false)}
         onSubmit={async (values) => {
           const id = selected?.id;
-          const sku = selected?.sku;
+          const originalSku = selected?.sku;
+          const newSku = values.sku !== originalSku ? values.sku : undefined;
           const { sku: _omitSku, ...rest } = values as any;
-          await recipesApi.update({ id, sku, ...rest, last_updated_by: currentUser });
+          await recipesApi.update({ id, sku: originalSku, new_sku: newSku, ...rest, last_updated_by: currentUser });
           setEditOpen(false);
           await refresh();
         }}
@@ -746,7 +605,7 @@ function IngredientsModal({
       <div style={{ display: "grid", gap: 16 }}>
         <div style={{ padding: 12, background: "var(--bg)", borderRadius: 10 }}>
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{recipe.name}</div>
-          <div style={{ fontSize: 14, color: "var(--muted)" }}>SKU: {recipe.sku} • Category: {recipe.category}</div>
+          <div style={{ fontSize: 14, color: "var(--muted)" }}>SKU: {recipe.sku}</div>
           <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 8 }}>
             Yield: {recipe.total_yield} {recipe.yield_unit} • Time: {recipe.preparation_time + recipe.cooking_time}min
           </div>
@@ -777,11 +636,11 @@ function IngredientsModal({
               >
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{ingredient.ingredient_name}</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                    {ingredient.supplier && ingredient.grade
-                      ? `${ingredient.supplier} • ${ingredient.grade}`
-                      : ingredient.supplier || ingredient.grade || "No supplier info"}
-                  </div>
+                  {ingredient.grade && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                      {ingredient.grade}
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>
@@ -983,18 +842,13 @@ function IngredientAutocomplete({ value, onSelect, onChange, style }: Ingredient
 type AddOrEditValues = {
   name: string;
   sku: string;
-  category: string;
   total_yield: number;
   yield_unit: string;
   preparation_time: number;
   cooking_time: number;
-  difficulty: "Easy" | "Medium" | "Hard";
-  status: "Active" | "Draft" | "Archived";
   brand?: string;
   grade?: string;
   packing_weight?: number;
-  packing_unit?: string;
-  packing_quantity_apx?: number;
   ingredients: RecipeIngredient[];
   instructions: string[];
 };
@@ -1016,18 +870,13 @@ function AddOrEditModal({
   const [values, setValues] = useState<AddOrEditValues>({
     name: initial?.name || "",
     sku: initial?.sku || "",
-    category: initial?.category || "Traditional Sweet",
     total_yield: initial?.total_yield ?? 1,
     yield_unit: initial?.yield_unit || "pcs",
     preparation_time: initial?.preparation_time ?? 30,
     cooking_time: initial?.cooking_time ?? 30,
-    difficulty: (initial?.difficulty as "Easy" | "Medium" | "Hard") || "Medium",
-    status: (initial?.status as "Active" | "Draft" | "Archived") || "Draft",
     brand: initial?.brand || "",
     grade: initial?.grade || "",
     packing_weight: initial?.packing_weight,
-    packing_unit: initial?.packing_unit || "",
-    packing_quantity_apx: initial?.packing_quantity_apx,
     ingredients: initial?.ingredients || [],
     instructions: initial?.instructions || [],
   });
@@ -1040,18 +889,13 @@ function AddOrEditModal({
     setValues({
       name: initial?.name || "",
       sku: initial?.sku || "",
-      category: initial?.category || "Traditional Sweet",
       total_yield: initial?.total_yield ?? 1,
       yield_unit: initial?.yield_unit || "pcs",
       preparation_time: initial?.preparation_time ?? 30,
       cooking_time: initial?.cooking_time ?? 30,
-      difficulty: (initial?.difficulty as "Easy" | "Medium" | "Hard") || "Medium",
-      status: (initial?.status as "Active" | "Draft" | "Archived") || "Draft",
       brand: initial?.brand || "",
       grade: initial?.grade || "",
       packing_weight: initial?.packing_weight,
-      packing_unit: initial?.packing_unit || "",
-      packing_quantity_apx: initial?.packing_quantity_apx,
       ingredients: initial?.ingredients || [],
       instructions: initial?.instructions || [],
     });
@@ -1061,7 +905,7 @@ function AddOrEditModal({
   }, [open, initial]);
 
   useEffect(() => {
-    if (!autoGenerateSku || isEdit) return;
+    if (!autoGenerateSku) return;
     
     const generateSku = () => {
       const brand = values.brand?.trim() || "";
@@ -1088,13 +932,13 @@ function AddOrEditModal({
     if (generatedSku) {
       setValues((v) => ({ ...v, sku: generatedSku }));
     }
-  }, [autoGenerateSku, values.brand, values.name, isEdit]);
+  }, [autoGenerateSku, values.brand, values.name]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     if (!values.name.trim()) return setErr("Name is required");
-    if (!values.sku.trim() && !isEdit) return setErr("SKU is required");
+    if (!values.sku.trim()) return setErr("SKU is required");
 
     if (values.ingredients.length === 0) {
       return setErr("At least one ingredient is required");
@@ -1186,56 +1030,6 @@ function AddOrEditModal({
               required
             />
           </Field>
-          <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>
-                SKU
-              </span>
-              {!isEdit && (
-                <label style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--muted)",
-                  cursor: "pointer",
-                  userSelect: "none"
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={autoGenerateSku}
-                    onChange={(e) => setAutoGenerateSku(e.target.checked)}
-                    style={{
-                      width: 16,
-                      height: 16,
-                      cursor: "pointer"
-                    }}
-                  />
-                  Auto-generate SKU
-                </label>
-              )}
-            </div>
-            <input
-              value={values.sku}
-              onChange={(e) => setValues((v) => ({ ...v, sku: e.target.value }))}
-              placeholder="PD-001"
-              style={{
-                ...inputStyle,
-                background: (isEdit || autoGenerateSku) ? "rgba(127,127,127,0.08)" : "transparent"
-              }}
-              required={!isEdit}
-              disabled={isEdit || autoGenerateSku}
-            />
-          </label>
-          <Field label="Category">
-            <input
-              value={values.category}
-              onChange={(e) => setValues((v) => ({ ...v, category: e.target.value }))}
-              placeholder="Traditional Sweet"
-              style={inputStyle}
-            />
-          </Field>
           <Field label="Brand">
             <input
               value={values.brand || ""}
@@ -1244,6 +1038,46 @@ function AddOrEditModal({
               style={inputStyle}
             />
           </Field>
+          <label style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>
+                SKU
+              </span>
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--muted)",
+                cursor: "pointer",
+                userSelect: "none"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={autoGenerateSku}
+                  onChange={(e) => setAutoGenerateSku(e.target.checked)}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    cursor: "pointer"
+                  }}
+                />
+                Auto-generate SKU
+              </label>
+            </div>
+            <input
+              value={values.sku}
+              onChange={(e) => setValues((v) => ({ ...v, sku: e.target.value }))}
+              placeholder="PD-001"
+              style={{
+                ...inputStyle,
+                background: autoGenerateSku ? "rgba(127,127,127,0.08)" : "transparent"
+              }}
+              required
+              disabled={autoGenerateSku}
+            />
+          </label>
           <Field label="Grade">
             <input
               value={values.grade || ""}
@@ -1287,51 +1121,12 @@ function AddOrEditModal({
               min={0}
             />
           </Field>
-          <Field label="Difficulty">
-            <select
-              value={values.difficulty}
-              onChange={(e) => setValues((v) => ({ ...v, difficulty: e.target.value as any }))}
-              style={inputStyle}
-            >
-              <option>Easy</option>
-              <option>Medium</option>
-              <option>Hard</option>
-            </select>
-          </Field>
-          <Field label="Status">
-            <select
-              value={values.status}
-              onChange={(e) => setValues((v) => ({ ...v, status: e.target.value as any }))}
-              style={inputStyle}
-            >
-              <option>Draft</option>
-              <option>Active</option>
-              <option>Archived</option>
-            </select>
-          </Field>
           <Field label="Packing Weight">
             <input
               type="number"
               value={values.packing_weight || ""}
               onChange={(e) => setValues((v) => ({ ...v, packing_weight: e.target.value ? parseFloat(e.target.value) : undefined }))}
               placeholder="250"
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Packing Unit">
-            <input
-              value={values.packing_unit || ""}
-              onChange={(e) => setValues((v) => ({ ...v, packing_unit: e.target.value }))}
-              placeholder="g/box"
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Packing Qty Apx">
-            <input
-              type="number"
-              value={values.packing_quantity_apx || ""}
-              onChange={(e) => setValues((v) => ({ ...v, packing_quantity_apx: e.target.value ? parseInt(e.target.value) : undefined }))}
-              placeholder="12"
               style={inputStyle}
             />
           </Field>
@@ -1377,7 +1172,6 @@ function AddOrEditModal({
                           ...ingredient,
                           ingredient_name: item.name,
                           unit: item.unit,
-                          supplier: item.supplier || "",
                           grade: item.grade || "",
                           cost_per_unit: item.cost_per_unit,
                           cost: cost,
@@ -1417,15 +1211,6 @@ function AddOrEditModal({
                   value={ing.unit}
                   onChange={(e) => updateIngredient(idx, "unit", e.target.value)}
                   placeholder="g"
-                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
-                  readOnly
-                />
-              </Field>
-              <Field label="Supplier">
-                <input
-                  value={ing.supplier || ""}
-                  onChange={(e) => updateIngredient(idx, "supplier", e.target.value)}
-                  placeholder="Auto"
                   style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
                   readOnly
                 />

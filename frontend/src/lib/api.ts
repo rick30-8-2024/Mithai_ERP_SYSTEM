@@ -186,7 +186,6 @@ export interface RecipeIngredient {
   ingredient_name: string;
   quantity: number;
   unit: string;
-  supplier?: string;
   grade?: string;
   cost: number;
   cost_per_unit?: number;
@@ -196,18 +195,13 @@ export interface Recipe {
   id: string;
   name: string;
   sku: string;
-  category: string;
   total_yield: number;
   yield_unit: string;
-  preparation_time: number; // in minutes
-  cooking_time: number; // in minutes
-  difficulty: "Easy" | "Medium" | "Hard";
-  status: "Active" | "Draft" | "Archived";
+  preparation_time: number;
+  cooking_time: number;
   brand?: string;
   grade?: string;
   packing_weight?: number;
-  packing_unit?: string;
-  packing_quantity_apx?: number;
   total_cost: number;
   last_updated: string | null;
   last_updated_by?: string;
@@ -222,9 +216,6 @@ export interface RecipeListResponse {
 
 export interface RecipeListRequest {
   query?: string;
-  category?: string | null;
-  status?: string | null;
-  difficulty?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -232,18 +223,13 @@ export interface RecipeListRequest {
 export interface RecipeCreateRequest {
   name: string;
   sku: string;
-  category: string;
   total_yield: number;
   yield_unit: string;
   preparation_time: number;
   cooking_time: number;
-  difficulty: "Easy" | "Medium" | "Hard";
-  status?: "Active" | "Draft" | "Archived";
   brand?: string;
   grade?: string;
   packing_weight?: number;
-  packing_unit?: string;
-  packing_quantity_apx?: number;
   ingredients: RecipeIngredient[];
   instructions: string[];
   last_updated_by?: string;
@@ -253,18 +239,13 @@ export interface RecipeUpdateRequest {
   sku?: string;
   id?: string;
   name?: string;
-  category?: string;
   total_yield?: number;
   yield_unit?: string;
   preparation_time?: number;
   cooking_time?: number;
-  difficulty?: "Easy" | "Medium" | "Hard";
-  status?: "Active" | "Draft" | "Archived";
   brand?: string;
   grade?: string;
   packing_weight?: number;
-  packing_unit?: string;
-  packing_quantity_apx?: number;
   ingredients?: RecipeIngredient[];
   instructions?: string[];
   last_updated_by?: string;
@@ -275,9 +256,6 @@ export interface RecipeUpdateRequest {
 async function listRecipes(params: RecipeListRequest) {
   return post<RecipeListResponse>("/api/recipes/list", {
     query: params.query ?? "",
-    category: params.category ?? null,
-    status: params.status ?? null,
-    difficulty: params.difficulty ?? null,
     limit: params.limit ?? 50,
     offset: params.offset ?? 0,
   });

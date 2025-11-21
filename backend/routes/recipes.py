@@ -21,7 +21,6 @@ class RecipeIngredient(BaseModel):
     ingredient_name: str
     quantity: float
     unit: str
-    supplier: Optional[str] = None
     grade: Optional[str] = None
     cost: float = 0.0
     sort_order: int = 0
@@ -37,18 +36,13 @@ def _row_to_recipe(row, ingredients: List[dict] = None, instructions: List[str] 
         "id": str(row["id"]),
         "name": row["name"],
         "sku": row["sku"],
-        "category": row["category"],
         "total_yield": _to_float(row["total_yield"]),
         "yield_unit": row["yield_unit"],
         "preparation_time": int(row["preparation_time"]) if row["preparation_time"] else 0,
         "cooking_time": int(row["cooking_time"]) if row["cooking_time"] else 0,
-        "difficulty": row["difficulty"],
-        "status": row["status"],
         "brand": row.get("brand"),
         "grade": row.get("grade"),
         "packing_weight": _to_float(row["packing_weight"]) if row.get("packing_weight") else None,
-        "packing_unit": row.get("packing_unit"),
-        "packing_quantity_apx": int(row["packing_quantity_apx"]) if row.get("packing_quantity_apx") else None,
         "total_cost": _to_float(row["total_cost"]),
         "last_updated": row["last_updated"].isoformat() if row["last_updated"] else None,
         "last_updated_by": row.get("last_updated_by"),
@@ -59,9 +53,6 @@ def _row_to_recipe(row, ingredients: List[dict] = None, instructions: List[str] 
 
 class ListRequest(BaseModel):
     query: Optional[str] = ""
-    category: Optional[str] = None
-    status: Optional[str] = None
-    difficulty: Optional[str] = None
     limit: int = 50
     offset: int = 0
 
@@ -74,18 +65,13 @@ class GetRequest(BaseModel):
 class CreateRequest(BaseModel):
     name: str
     sku: str
-    category: str
     total_yield: float
     yield_unit: str
     preparation_time: int
     cooking_time: int
-    difficulty: str
-    status: str = "Draft"
     brand: Optional[str] = None
     grade: Optional[str] = None
     packing_weight: Optional[float] = None
-    packing_unit: Optional[str] = None
-    packing_quantity_apx: Optional[int] = None
     ingredients: List[RecipeIngredient] = []
     instructions: List[str] = []
     last_updated_by: Optional[str] = None
@@ -95,18 +81,14 @@ class UpdateRequest(BaseModel):
     sku: Optional[str] = None
     id: Optional[str] = None
     name: Optional[str] = None
-    category: Optional[str] = None
+    new_sku: Optional[str] = None
     total_yield: Optional[float] = None
     yield_unit: Optional[str] = None
     preparation_time: Optional[int] = None
     cooking_time: Optional[int] = None
-    difficulty: Optional[str] = None
-    status: Optional[str] = None
     brand: Optional[str] = None
     grade: Optional[str] = None
     packing_weight: Optional[float] = None
-    packing_unit: Optional[str] = None
-    packing_quantity_apx: Optional[int] = None
     ingredients: Optional[List[RecipeIngredient]] = None
     instructions: Optional[List[str]] = None
     last_updated_by: Optional[str] = None
@@ -121,19 +103,14 @@ async def list_recipes(payload: ListRequest):
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time,
-                       difficulty, status, brand, grade, packing_weight, packing_unit, packing_quantity_apx,
-                       total_cost, last_updated, last_updated_by
+                SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                       brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                 FROM recipes
-                WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2 OR category ILIKE $2 OR brand ILIKE $2)
-                  AND ($3::text IS NULL OR category = $3)
-                  AND ($4::text IS NULL OR status = $4)
-                  AND ($5::text IS NULL OR difficulty = $5)
+                WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2 OR brand ILIKE $2)
                 ORDER BY name
-                LIMIT $6 OFFSET $7
+                LIMIT $3 OFFSET $4
                 """,
-                q, pattern, payload.category, payload.status, payload.difficulty,
-                payload.limit, payload.offset
+                q, pattern, payload.limit, payload.offset
             )
         
         items = []
@@ -142,7 +119,7 @@ async def list_recipes(payload: ListRequest):
             async with pool.acquire() as conn:
                 ingredient_rows = await conn.fetch(
                     """
-                    SELECT ingredient_name, quantity, unit, supplier, grade, cost
+                    SELECT ingredient_name, quantity, unit, grade, cost
                     FROM recipe_ingredients
                     WHERE recipe_id = $1
                     ORDER BY sort_order
@@ -154,7 +131,6 @@ async def list_recipes(payload: ListRequest):
                         "ingredient_name": ing["ingredient_name"],
                         "quantity": _to_float(ing["quantity"]),
                         "unit": ing["unit"],
-                        "supplier": ing.get("supplier"),
                         "grade": ing.get("grade"),
                         "cost": _to_float(ing["cost"]),
                     }
@@ -190,9 +166,8 @@ async def get_recipe(payload: GetRequest):
             if payload.sku:
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time,
-                           difficulty, status, brand, grade, packing_weight, packing_unit, packing_quantity_apx,
-                           total_cost, last_updated, last_updated_by
+                    SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                           brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     FROM recipes WHERE sku = $1
                     """,
                     payload.sku
@@ -200,9 +175,8 @@ async def get_recipe(payload: GetRequest):
             else:
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time,
-                           difficulty, status, brand, grade, packing_weight, packing_unit, packing_quantity_apx,
-                           total_cost, last_updated, last_updated_by
+                    SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                           brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     FROM recipes WHERE id = $1::uuid
                     """,
                     payload.id
@@ -215,7 +189,7 @@ async def get_recipe(payload: GetRequest):
         async with pool.acquire() as conn:
             ingredient_rows = await conn.fetch(
                 """
-                SELECT ingredient_name, quantity, unit, supplier, grade, cost
+                SELECT ingredient_name, quantity, unit, grade, cost
                 FROM recipe_ingredients
                 WHERE recipe_id = $1
                 ORDER BY sort_order
@@ -227,7 +201,6 @@ async def get_recipe(payload: GetRequest):
                     "ingredient_name": ing["ingredient_name"],
                     "quantity": _to_float(ing["quantity"]),
                     "unit": ing["unit"],
-                    "supplier": ing.get("supplier"),
                     "grade": ing.get("grade"),
                     "cost": _to_float(ing["cost"]),
                 }
@@ -264,18 +237,15 @@ async def create_recipe(payload: CreateRequest):
                 # Create recipe
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO recipes (name, sku, category, total_yield, yield_unit, preparation_time,
-                                       cooking_time, difficulty, status, brand, grade, packing_weight,
-                                       packing_unit, packing_quantity_apx, total_cost, last_updated_by)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-                    RETURNING id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time,
-                              difficulty, status, brand, grade, packing_weight, packing_unit, packing_quantity_apx,
-                              total_cost, last_updated, last_updated_by
+                    INSERT INTO recipes (name, sku, total_yield, yield_unit, preparation_time,
+                                       cooking_time, brand, grade, packing_weight, total_cost, last_updated_by)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    RETURNING id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                              brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     """,
-                    payload.name, payload.sku, payload.category, payload.total_yield, payload.yield_unit,
-                    payload.preparation_time, payload.cooking_time, payload.difficulty, payload.status,
-                    payload.brand, payload.grade, payload.packing_weight, payload.packing_unit,
-                    payload.packing_quantity_apx, total_cost, payload.last_updated_by
+                    payload.name, payload.sku, payload.total_yield, payload.yield_unit,
+                    payload.preparation_time, payload.cooking_time,
+                    payload.brand, payload.grade, payload.packing_weight, total_cost, payload.last_updated_by
                 )
                 
                 recipe_id = row["id"]
@@ -284,10 +254,10 @@ async def create_recipe(payload: CreateRequest):
                 for idx, ing in enumerate(payload.ingredients):
                     await conn.execute(
                         """
-                        INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity, unit, supplier, grade, cost, sort_order)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity, unit, grade, cost, sort_order)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
                         """,
-                        recipe_id, ing.ingredient_name, ing.quantity, ing.unit, ing.supplier, ing.grade, ing.cost, idx
+                        recipe_id, ing.ingredient_name, ing.quantity, ing.unit, ing.grade, ing.cost, idx
                     )
                 
                 # Add instructions
@@ -303,7 +273,7 @@ async def create_recipe(payload: CreateRequest):
                 # Get ingredients for response
                 ingredient_rows = await conn.fetch(
                     """
-                    SELECT ingredient_name, quantity, unit, supplier, grade, cost
+                    SELECT ingredient_name, quantity, unit, grade, cost
                     FROM recipe_ingredients
                     WHERE recipe_id = $1
                     ORDER BY sort_order
@@ -315,7 +285,6 @@ async def create_recipe(payload: CreateRequest):
                         "ingredient_name": ing["ingredient_name"],
                         "quantity": _to_float(ing["quantity"]),
                         "unit": ing["unit"],
-                        "supplier": ing.get("supplier"),
                         "grade": ing.get("grade"),
                         "cost": _to_float(ing["cost"]),
                     }
@@ -345,107 +314,86 @@ async def update_recipe(payload: UpdateRequest):
     if not payload.sku and not payload.id:
         raise HTTPException(status_code=400, detail="Provide either 'sku' or 'id' to identify the recipe")
     
-    # Build dynamic update
-    fields = []
-    values = []
-    
-    if payload.name is not None:
-        fields.append("name = ${}")
-        values.append(payload.name)
-    if payload.category is not None:
-        fields.append("category = ${}")
-        values.append(payload.category)
-    if payload.total_yield is not None:
-        fields.append("total_yield = ${}")
-        values.append(payload.total_yield)
-    if payload.yield_unit is not None:
-        fields.append("yield_unit = ${}")
-        values.append(payload.yield_unit)
-    if payload.preparation_time is not None:
-        fields.append("preparation_time = ${}")
-        values.append(payload.preparation_time)
-    if payload.cooking_time is not None:
-        fields.append("cooking_time = ${}")
-        values.append(payload.cooking_time)
-    if payload.difficulty is not None:
-        fields.append("difficulty = ${}")
-        values.append(payload.difficulty)
-    if payload.status is not None:
-        fields.append("status = ${}")
-        values.append(payload.status)
-    if payload.brand is not None:
-        fields.append("brand = ${}")
-        values.append(payload.brand)
-    if payload.grade is not None:
-        fields.append("grade = ${}")
-        values.append(payload.grade)
-    if payload.packing_weight is not None:
-        fields.append("packing_weight = ${}")
-        values.append(payload.packing_weight)
-    if payload.packing_unit is not None:
-        fields.append("packing_unit = ${}")
-        values.append(payload.packing_unit)
-    if payload.packing_quantity_apx is not None:
-        fields.append("packing_quantity_apx = ${}")
-        values.append(payload.packing_quantity_apx)
-    if payload.last_updated_by is not None:
-        fields.append("last_updated_by = ${}")
-        values.append(payload.last_updated_by)
-    
-    # Calculate total cost if ingredients provided
-    if payload.ingredients is not None:
-        total_cost = sum(ing.cost for ing in payload.ingredients)
-        fields.append("total_cost = ${}")
-        values.append(total_cost)
-    
-    if not fields and payload.ingredients is None and payload.instructions is None:
-        raise HTTPException(status_code=400, detail="No fields provided to update")
-    
     try:
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Update recipe if fields provided
+                if payload.sku:
+                    row = await conn.fetchrow("SELECT id FROM recipes WHERE sku = $1", payload.sku)
+                else:
+                    row = await conn.fetchrow("SELECT id FROM recipes WHERE id = $1::uuid", payload.id)
+                
+                if not row:
+                    raise HTTPException(status_code=404, detail="Recipe not found")
+                recipe_id = row["id"]
+                
+                if payload.new_sku is not None:
+                    existing = await conn.fetchrow(
+                        "SELECT id FROM recipes WHERE sku = $1 AND id != $2",
+                        payload.new_sku, recipe_id
+                    )
+                    if existing:
+                        raise HTTPException(status_code=409, detail="SKU already exists")
+    
+                fields = []
+                values = []
+                
+                if payload.new_sku is not None:
+                    fields.append("sku = ${}")
+                    values.append(payload.new_sku)
+                if payload.name is not None:
+                    fields.append("name = ${}")
+                    values.append(payload.name)
+                if payload.total_yield is not None:
+                    fields.append("total_yield = ${}")
+                    values.append(payload.total_yield)
+                if payload.yield_unit is not None:
+                    fields.append("yield_unit = ${}")
+                    values.append(payload.yield_unit)
+                if payload.preparation_time is not None:
+                    fields.append("preparation_time = ${}")
+                    values.append(payload.preparation_time)
+                if payload.cooking_time is not None:
+                    fields.append("cooking_time = ${}")
+                    values.append(payload.cooking_time)
+                if payload.brand is not None:
+                    fields.append("brand = ${}")
+                    values.append(payload.brand)
+                if payload.grade is not None:
+                    fields.append("grade = ${}")
+                    values.append(payload.grade)
+                if payload.packing_weight is not None:
+                    fields.append("packing_weight = ${}")
+                    values.append(payload.packing_weight)
+                if payload.last_updated_by is not None:
+                    fields.append("last_updated_by = ${}")
+                    values.append(payload.last_updated_by)
+                
+                if payload.ingredients is not None:
+                    total_cost = sum(ing.cost for ing in payload.ingredients)
+                    fields.append("total_cost = ${}")
+                    values.append(total_cost)
+                
+                if not fields and payload.ingredients is None and payload.instructions is None:
+                    raise HTTPException(status_code=400, detail="No fields provided to update")
+                
                 if fields:
                     set_clauses = []
                     for idx, clause in enumerate(fields, start=1):
                         set_clauses.append(clause.replace("${}", f"${idx}"))
                     set_sql = ", ".join(set_clauses) + ", last_updated = NOW()"
                     
-                    if payload.sku:
-                        where_param_index = len(values) + 1
-                        sql = f"""
-                            UPDATE recipes
-                            SET {set_sql}
-                            WHERE sku = ${where_param_index}
-                            RETURNING id
-                        """
-                        row = await conn.fetchrow(sql, *values, payload.sku)
-                    else:
-                        where_param_index = len(values) + 1
-                        sql = f"""
-                            UPDATE recipes
-                            SET {set_sql}
-                            WHERE id = ${where_param_index}::uuid
-                            RETURNING id
-                        """
-                        row = await conn.fetchrow(sql, *values, payload.id)
+                    sql = f"""
+                        UPDATE recipes
+                        SET {set_sql}
+                        WHERE id = ${len(values) + 1}
+                        RETURNING id
+                    """
+                    row = await conn.fetchrow(sql, *values, recipe_id)
                     
                     if not row:
                         raise HTTPException(status_code=404, detail="Recipe not found")
-                    recipe_id = row["id"]
                 else:
-                    # Get recipe ID
-                    if payload.sku:
-                        row = await conn.fetchrow("SELECT id FROM recipes WHERE sku = $1", payload.sku)
-                    else:
-                        row = await conn.fetchrow("SELECT id FROM recipes WHERE id = $1::uuid", payload.id)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Recipe not found")
-                    recipe_id = row["id"]
-                    
-                    # Update last_updated
                     await conn.execute("UPDATE recipes SET last_updated = NOW() WHERE id = $1", recipe_id)
                 
                 # Update ingredients if provided
@@ -454,10 +402,10 @@ async def update_recipe(payload: UpdateRequest):
                     for idx, ing in enumerate(payload.ingredients):
                         await conn.execute(
                             """
-                            INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity, unit, supplier, grade, cost, sort_order)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity, unit, grade, cost, sort_order)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7)
                             """,
-                            recipe_id, ing.ingredient_name, ing.quantity, ing.unit, ing.supplier, ing.grade, ing.cost, idx
+                            recipe_id, ing.ingredient_name, ing.quantity, ing.unit, ing.grade, ing.cost, idx
                         )
                 
                 # Update instructions if provided
@@ -475,9 +423,8 @@ async def update_recipe(payload: UpdateRequest):
                 # Get updated recipe
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time,
-                           difficulty, status, brand, grade, packing_weight, packing_unit, packing_quantity_apx,
-                           total_cost, last_updated, last_updated_by
+                    SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                           brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     FROM recipes WHERE id = $1
                     """,
                     recipe_id
@@ -486,7 +433,7 @@ async def update_recipe(payload: UpdateRequest):
                 # Get ingredients
                 ingredient_rows = await conn.fetch(
                     """
-                    SELECT ingredient_name, quantity, unit, supplier, grade, cost
+                    SELECT ingredient_name, quantity, unit, grade, cost
                     FROM recipe_ingredients
                     WHERE recipe_id = $1
                     ORDER BY sort_order
@@ -498,7 +445,6 @@ async def update_recipe(payload: UpdateRequest):
                         "ingredient_name": ing["ingredient_name"],
                         "quantity": _to_float(ing["quantity"]),
                         "unit": ing["unit"],
-                        "supplier": ing.get("supplier"),
                         "grade": ing.get("grade"),
                         "cost": _to_float(ing["cost"]),
                     }

@@ -85,27 +85,20 @@ CREATE TABLE IF NOT EXISTS recipes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     sku TEXT NOT NULL UNIQUE,
-    category TEXT NOT NULL,
     total_yield NUMERIC NOT NULL,
     yield_unit TEXT NOT NULL,
     preparation_time INTEGER NOT NULL,
     cooking_time INTEGER NOT NULL,
-    difficulty TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Draft',
     brand TEXT,
     grade TEXT,
     packing_weight NUMERIC,
-    packing_unit TEXT,
-    packing_quantity_apx INTEGER,
     total_cost NUMERIC NOT NULL DEFAULT 0,
     last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_updated_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_recipes_sku ON recipes(sku);
-CREATE INDEX IF NOT EXISTS idx_recipes_category ON recipes(category);
 CREATE INDEX IF NOT EXISTS idx_recipes_name ON recipes(name);
-CREATE INDEX IF NOT EXISTS idx_recipes_status ON recipes(status);
 
 CREATE TABLE IF NOT EXISTS recipe_ingredients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,7 +106,6 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
     ingredient_name TEXT NOT NULL,
     quantity NUMERIC NOT NULL,
     unit TEXT NOT NULL,
-    supplier TEXT,
     grade TEXT,
     cost NUMERIC NOT NULL DEFAULT 0,
     sort_order INTEGER DEFAULT 0

@@ -1032,8 +1032,6 @@ export default function WorkOrders() {
             <div>
               <h3 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>{recipeDetails.name}</h3>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Badge text={recipeDetails.category} color="#64748b" />
-                <Badge text={`Difficulty: ${recipeDetails.difficulty}`} color="#3b82f6" />
                 <Badge text={`Yield: ${recipeDetails.total_yield} ${recipeDetails.yield_unit}`} color="#22c55e" />
               </div>
             </div>
@@ -1083,10 +1081,11 @@ export default function WorkOrders() {
                         {(ing.quantity * selectedOrder.batch_size).toFixed(2)} {ing.unit}
                       </span>
                     </div>
-                    <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--muted)" }}>
-                      <span>Supplier: {ing.supplier}</span>
-                      <span>Grade: {ing.grade}</span>
-                    </div>
+                    {ing.grade && (
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                        <span>Grade: {ing.grade}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
