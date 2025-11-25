@@ -423,9 +423,9 @@ export default function Inventory() {
             }}
           >
             <option value="All">All</option>
-            <option value="Finished Goods">Finished Goods</option>
-            <option value="Raw Materials">Raw Materials</option>
-            <option value="Packing Materials">Packing Materials</option>
+            <option value="Finished Good">Finished Good</option>
+            <option value="Raw Material">Raw Material</option>
+            <option value="Packing Material">Packing Material</option>
           </select>
           <select
             className="inventory-filter-select"
@@ -891,7 +891,7 @@ function TypeSelectionModal({
             gap: 6,
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 900 }}>Finished Goods</div>
+          <div style={{ fontSize: 16, fontWeight: 900 }}>Finished Good</div>
           <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
             Final products ready for sale
           </div>
@@ -912,7 +912,7 @@ function TypeSelectionModal({
             gap: 6,
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 900 }}>Raw Materials</div>
+          <div style={{ fontSize: 16, fontWeight: 900 }}>Raw Material</div>
           <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
             Ingredients and materials used in production
           </div>
@@ -933,7 +933,7 @@ function TypeSelectionModal({
             gap: 6,
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 900 }}>Packing Materials</div>
+          <div style={{ fontSize: 16, fontWeight: 900 }}>Packing Material</div>
           <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
             Packaging materials and supplies
           </div>
@@ -1136,9 +1136,9 @@ function AddOrEditModal({
               }
               style={inputStyle}
             >
-              <option value="Finished Goods">Finished Goods</option>
-              <option value="Raw Materials">Raw Materials</option>
-              <option value="Packing Materials">Packing Materials</option>
+              <option value="Finished Good">Finished Good</option>
+              <option value="Raw Material">Raw Material</option>
+              <option value="Packing Material">Packing Material</option>
             </select>
           </Field>
           <Field label="Brand">
