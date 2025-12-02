@@ -3,13 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { MoreVertical, ArrowLeft } from "lucide-react";
 import {
   inventoryApi,
+  factoryTransfersApi,
   type InventoryItem,
   type InventoryCategory,
+  type FactoryLocation,
 } from "../lib/api";
 
 type CategoryFilter = "All" | InventoryCategory;
 type StatusFilter = "All" | "In Stock" | "Low Stock" | "Out of Stock";
-type FactoryFilter = "All" | "Factory 1" | "Factory 2";
+type FactoryFilter = "All" | string;
 
 type ModalProps = {
   open: boolean;
@@ -159,6 +161,7 @@ export default function Inventory() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [factoryLocations, setFactoryLocations] = useState<FactoryLocation[]>([]);
   
   // Get current user from localStorage
   const currentUser = useMemo(() => {
@@ -182,6 +185,18 @@ export default function Inventory() {
   }, [theme]);
 
   const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
+
+  useEffect(() => {
+    async function fetchFactoryLocations() {
+      try {
+        const locations = await factoryTransfersApi.listFactories();
+        setFactoryLocations(locations.filter(loc => loc.status === 'Active'));
+      } catch (e) {
+        console.error('Failed to fetch factory locations:', e);
+      }
+    }
+    fetchFactoryLocations();
+  }, []);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -465,8 +480,9 @@ export default function Inventory() {
             }}
           >
             <option>All</option>
-            <option>Factory 1</option>
-            <option>Factory 2</option>
+            {factoryLocations.map((loc) => (
+              <option key={loc.id} value={loc.name}>{loc.name}</option>
+            ))}
           </select>
           <button
             className="btn inventory-add-btn"
@@ -757,6 +773,7 @@ export default function Inventory() {
           setAddOpen(false);
           await refresh();
         }}
+        factoryLocations={factoryLocations}
       />
 
       {/* Edit Item Modal */}
@@ -772,6 +789,7 @@ export default function Inventory() {
           setEditOpen(false);
           await refresh();
         }}
+        factoryLocations={factoryLocations}
       />
 
       {/* Update Quantity Modal */}
@@ -950,6 +968,7 @@ function AddOrEditModal({
   itemType,
   onClose,
   onSubmit,
+  factoryLocations,
 }: {
   open: boolean;
   title: string;
@@ -957,6 +976,7 @@ function AddOrEditModal({
   itemType: InventoryCategory;
   onClose: () => void;
   onSubmit: (values: AddOrEditValues) => Promise<void>;
+  factoryLocations: FactoryLocation[];
 }) {
   const isEdit = Boolean(initial);
   const [values, setValues] = useState<AddOrEditValues>({
@@ -1275,8 +1295,9 @@ function AddOrEditModal({
               style={inputStyle}
             >
               <option value="">Not Assigned</option>
-              <option>Factory 1</option>
-              <option>Factory 2</option>
+              {factoryLocations.map((loc) => (
+                <option key={loc.id} value={loc.name}>{loc.name}</option>
+              ))}
             </select>
           </Field>
         </div>

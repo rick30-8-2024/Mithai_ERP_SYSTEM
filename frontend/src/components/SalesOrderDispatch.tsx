@@ -18,8 +18,9 @@ import {
   X,
   Trash2,
   Receipt,
+  Calendar,
 } from 'lucide-react';
-import { dispatchApi, type DispatchOrder, type FinishedGood, type WorkOrderForDispatch } from '../lib/api';
+import { dispatchApi, type DispatchOrder, type FinishedGood, type WorkOrderForDispatch, type ScheduleDispatchRequest } from '../lib/api';
 
 type ModalProps = {
   open: boolean;
@@ -150,12 +151,25 @@ export default function SalesOrderDispatch() {
 
   const [showHoldDialog, setShowHoldDialog] = useState(false);
   const [showDispatchDialog, setShowDispatchDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<DispatchOrder | null>(null);
   const [holdReason, setHoldReason] = useState('');
 
   const [currentTab, setCurrentTab] = useState<'inventory' | 'logistics'>('inventory');
   const [itemInventories, setItemInventories] = useState<Record<string, ItemInventory>>({});
   const [logisticsEntries, setLogisticsEntries] = useState<LogisticsEntry[]>([]);
+
+  const [scheduleStep, setScheduleStep] = useState<'select' | 'details'>('select');
+  const [selectedOrderForSchedule, setSelectedOrderForSchedule] = useState<DispatchOrder | null>(null);
+  const [scheduleFormData, setScheduleFormData] = useState({
+    scheduledDate: '',
+    estimatedDeliveryDate: '',
+    deliveryType: 'Standard' as 'Standard' | 'Express' | 'Same Day' | 'Scheduled',
+    vehicleNumber: '',
+    driverName: '',
+    driverContact: '',
+    specialInstructions: ''
+  });
 
   const statuses = ['All', 'Ready for Dispatch', 'Packaging', 'Dispatched', 'In Transit', 'Delivered', 'On Hold', 'Delayed'];
   const priorities = ['All', 'Low', 'Medium', 'High', 'Urgent'];
@@ -255,6 +269,81 @@ export default function SalesOrderDispatch() {
         return { bg: '#ffebee', text: '#c62828', border: '#ef9a9a' };
       default:
         return { bg: '#f5f5f5', text: '#424242', border: '#e0e0e0' };
+    }
+  };
+
+  const handleScheduleDispatch = () => {
+    setScheduleStep('select');
+    setSelectedOrderForSchedule(null);
+    setScheduleFormData({
+      scheduledDate: '',
+      estimatedDeliveryDate: '',
+      deliveryType: 'Standard',
+      vehicleNumber: '',
+      driverName: '',
+      driverContact: '',
+      specialInstructions: ''
+    });
+    setShowScheduleDialog(true);
+  };
+
+  const handleSelectOrderForSchedule = (order: DispatchOrder) => {
+    setSelectedOrderForSchedule(order);
+    const today = new Date();
+    const defaultScheduleDate = today.toISOString().split('T')[0];
+    const defaultDeliveryDate = new Date(today.setDate(today.getDate() + 3)).toISOString().split('T')[0];
+    setScheduleFormData(prev => ({
+      ...prev,
+      scheduledDate: defaultScheduleDate,
+      estimatedDeliveryDate: defaultDeliveryDate
+    }));
+    setScheduleStep('details');
+  };
+
+  const handleSelectOrderForDispatch = (order: DispatchOrder) => {
+    setShowScheduleDialog(false);
+    handleCompleteDispatch(order);
+  };
+
+  const confirmScheduleDispatch = async () => {
+    if (!selectedOrderForSchedule) {
+      alert('Please select an order to schedule');
+      return;
+    }
+
+    if (!scheduleFormData.scheduledDate) {
+      alert('Please enter a scheduled dispatch date');
+      return;
+    }
+
+    if (!scheduleFormData.estimatedDeliveryDate) {
+      alert('Please enter an estimated delivery date');
+      return;
+    }
+
+    try {
+      const username = localStorage.getItem('ERP_USERNAME') || 'User';
+      const payload: ScheduleDispatchRequest = {
+        order_id: parseInt(selectedOrderForSchedule.id),
+        scheduled_date: scheduleFormData.scheduledDate,
+        estimated_delivery_date: scheduleFormData.estimatedDeliveryDate,
+        delivery_type: scheduleFormData.deliveryType,
+        vehicle_number: scheduleFormData.vehicleNumber || undefined,
+        driver_name: scheduleFormData.driverName || undefined,
+        driver_contact: scheduleFormData.driverContact || undefined,
+        special_instructions: scheduleFormData.specialInstructions || undefined,
+        created_by: username
+      };
+
+      await dispatchApi.scheduleDispatch(payload);
+      alert('Dispatch scheduled successfully!');
+      setShowScheduleDialog(false);
+      setSelectedOrderForSchedule(null);
+      setScheduleStep('select');
+      loadData();
+    } catch (error) {
+      console.error('Failed to schedule dispatch:', error);
+      alert('Failed to schedule dispatch: ' + (error as Error).message);
     }
   };
 
@@ -832,6 +921,7 @@ export default function SalesOrderDispatch() {
               {priorities.map(p => <option key={p} value={p}>{p === 'All' ? 'All Priorities' : p}</option>)}
             </select>
             <button
+              onClick={handleScheduleDispatch}
               style={{
                 padding: '10px 16px',
                 border: 'none',
@@ -914,11 +1004,11 @@ export default function SalesOrderDispatch() {
                 <div style={{ fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--fg-muted)' }}>
                     <MapPin width={12} height={12} />
-                    <span>{order.deliveryAddress.split(',')[0]}</span>
+                    <span>{order.deliveryAddress ? order.deliveryAddress.split(',')[0] : 'N/A'}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--fg-muted)' }}>
                     <Phone width={12} height={12} />
-                    <span>{order.customerContact}</span>
+                    <span>{order.customerContact || 'N/A'}</span>
                   </div>
                 </div>
 
@@ -1156,6 +1246,396 @@ export default function SalesOrderDispatch() {
           </button>
         )}
       </div>
+
+      <Modal open={showScheduleDialog} title="Schedule Dispatch" onClose={() => setShowScheduleDialog(false)} width={800}>
+        <div>
+          {scheduleStep === 'select' ? (
+            <>
+              <div style={{ marginBottom: 16, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Calendar width={16} height={16} />
+                  <span style={{ fontWeight: 600 }}>Step 1: Select Order</span>
+                </div>
+                Select an order to schedule for dispatch. Only orders with status "Ready for Dispatch", "Packaging", or "Partially Fulfilled" can be scheduled.
+              </div>
+
+              {orders.filter(o => ['Ready for Dispatch', 'Packaging', 'Partially Fulfilled'].includes(o.status)).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--fg-muted)' }}>
+                  <Truck width={48} height={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No Orders Ready for Dispatch</div>
+                  <div style={{ fontSize: 14 }}>All orders are either already dispatched, delivered, or on hold.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '50vh', overflowY: 'auto' }}>
+                  {orders
+                    .filter(o => ['Ready for Dispatch', 'Packaging', 'Partially Fulfilled'].includes(o.status))
+                    .map(order => (
+                      <div
+                        key={order.id}
+                        style={{
+                          border: '1px solid var(--border)',
+                          borderRadius: 10,
+                          padding: 16,
+                          background: 'var(--bg)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onClick={() => handleSelectOrderForSchedule(order)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = '#00695c';
+                          e.currentTarget.style.background = '#e0f2f1';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.background = 'var(--bg)';
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 700 }}>{order.customerCompany}</div>
+                            <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{order.orderNumber}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{
+                              padding: '4px 10px',
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              ...getStatusColor(order.status)
+                            }}>
+                              {order.status}
+                            </div>
+                            <div style={{
+                              padding: '4px 10px',
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              ...getPriorityColor(order.priority)
+                            }}>
+                              {order.priority}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                          {order.items.map(item => (
+                            <div
+                              key={item.id}
+                              style={{
+                                padding: '4px 8px',
+                                background: 'var(--panel)',
+                                borderRadius: 6,
+                                fontSize: 12
+                              }}
+                            >
+                              {item.name} x {item.quantity}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--fg-muted)' }}>
+                            <User width={12} height={12} />
+                            <span>{order.customerName}</span>
+                          </div>
+                          <div style={{ fontWeight: 600, color: '#00695c' }}>
+                            ₹{order.finalAmount.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                <button
+                  onClick={() => setShowScheduleDialog(false)}
+                  style={{
+                    padding: '10px 20px',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: 'transparent',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom: 16, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Calendar width={16} height={16} />
+                  <span style={{ fontWeight: 600 }}>Step 2: Schedule Details</span>
+                </div>
+                Enter dispatch scheduling details for the selected order.
+              </div>
+
+              {selectedOrderForSchedule && (
+                <div style={{
+                  marginBottom: 20,
+                  padding: 16,
+                  background: 'var(--bg)',
+                  borderRadius: 10,
+                  border: '1px solid var(--border)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>{selectedOrderForSchedule.customerCompany}</div>
+                      <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{selectedOrderForSchedule.orderNumber}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        ...getStatusColor(selectedOrderForSchedule.status)
+                      }}>
+                        {selectedOrderForSchedule.status}
+                      </div>
+                      <div style={{
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        ...getPriorityColor(selectedOrderForSchedule.priority)
+                      }}>
+                        {selectedOrderForSchedule.priority}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+                    <div>
+                      <span style={{ color: 'var(--fg-muted)' }}>Customer: </span>
+                      <span style={{ fontWeight: 600 }}>{selectedOrderForSchedule.customerName}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--fg-muted)' }}>Amount: </span>
+                      <span style={{ fontWeight: 600, color: '#00695c' }}>₹{selectedOrderForSchedule.finalAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Scheduled Dispatch Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleFormData.scheduledDate}
+                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, scheduledDate: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 13,
+                      background: 'var(--panel)'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Estimated Delivery Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleFormData.estimatedDeliveryDate}
+                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, estimatedDeliveryDate: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 13,
+                      background: 'var(--panel)'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Delivery Type *
+                  </label>
+                  <select
+                    value={scheduleFormData.deliveryType}
+                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, deliveryType: e.target.value as any }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 13,
+                      background: 'var(--panel)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="Standard">Standard</option>
+                    <option value="Express">Express</option>
+                    <option value="Same Day">Same Day</option>
+                    <option value="Scheduled">Scheduled</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Vehicle Number
+                  </label>
+                  <input
+                    type="text"
+                    value={scheduleFormData.vehicleNumber}
+                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, vehicleNumber: e.target.value }))}
+                    placeholder="e.g., MH-12-AB-1234"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 13
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Driver Name
+                  </label>
+                  <input
+                    type="text"
+                    value={scheduleFormData.driverName}
+                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, driverName: e.target.value }))}
+                    placeholder="Enter driver name"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 13
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Driver Contact
+                  </label>
+                  <input
+                    type="text"
+                    value={scheduleFormData.driverContact}
+                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, driverContact: e.target.value }))}
+                    placeholder="Enter contact number"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 13
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Special Instructions
+                </label>
+                <textarea
+                  value={scheduleFormData.specialInstructions}
+                  onChange={(e) => setScheduleFormData(prev => ({ ...prev, specialInstructions: e.target.value }))}
+                  placeholder="Any special handling or delivery instructions..."
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontFamily: 'inherit',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'flex-end',
+                paddingTop: 16,
+                borderTop: '1px solid var(--border)'
+              }}>
+                <button
+                  onClick={() => setScheduleStep('select')}
+                  style={{
+                    padding: '10px 20px',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <ChevronLeft width={16} height={16} />
+                  Back
+                </button>
+                <button
+                  onClick={() => {
+                    setShowScheduleDialog(false);
+                    handleCompleteDispatch(selectedOrderForSchedule!);
+                  }}
+                  style={{
+                    padding: '10px 20px',
+                    border: '1.5px solid #1565c0',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: 'transparent',
+                    color: '#1565c0',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <CheckCircle width={16} height={16} />
+                  Complete Dispatch Now
+                </button>
+                <button
+                  onClick={confirmScheduleDispatch}
+                  disabled={!scheduleFormData.scheduledDate || !scheduleFormData.estimatedDeliveryDate}
+                  style={{
+                    padding: '10px 20px',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: (!scheduleFormData.scheduledDate || !scheduleFormData.estimatedDeliveryDate) ? '#ccc' : '#00695c',
+                    color: 'white',
+                    cursor: (!scheduleFormData.scheduledDate || !scheduleFormData.estimatedDeliveryDate) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Calendar width={16} height={16} />
+                  Schedule Dispatch
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={showHoldDialog} title="Put Order on Hold" onClose={() => setShowHoldDialog(false)} width={500}>
         {selectedOrder && (

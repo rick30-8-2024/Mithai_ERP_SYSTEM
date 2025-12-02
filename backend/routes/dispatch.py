@@ -24,7 +24,7 @@ def _row_to_dispatch_order(row, items: List[dict] = None) -> dict:
         "customerName": row["customer_name"],
         "customerContact": row.get("customer_contact"),
         "customerEmail": row.get("customer_email"),
-        "customerAddress": row.get("customer_address"),
+        "deliveryAddress": row.get("customer_address") or "",
         "orderDate": row["order_date"].isoformat() if row.get("order_date") else None,
         "dueDate": row["due_date"].isoformat() if row.get("due_date") else None,
         "deliveryDate": row["delivery_date"].isoformat() if row.get("delivery_date") else None,
@@ -697,3 +697,115 @@ async def get_dispatch_records_by_order(order_id: str):
         "items": dispatch_records,
         "total": len(dispatch_records)
     }
+
+
+class ScheduleDispatchRequest(BaseModel):
+    """Request model for scheduling a dispatch."""
+    order_id: int
+    scheduled_date: str
+    estimated_delivery_date: str
+    delivery_type: str
+    vehicle_number: Optional[str] = None
+    driver_name: Optional[str] = None
+    driver_contact: Optional[str] = None
+    special_instructions: Optional[str] = None
+    created_by: str
+
+
+@dispatch_router.post("/dispatch-orders/schedule")
+async def schedule_dispatch(req: ScheduleDispatchRequest):
+    """Schedule a dispatch for a sales order."""
+    pool = await get_db_pool()
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                order_query = "SELECT * FROM sales_orders WHERE id = $1 FOR UPDATE"
+                order = await conn.fetchrow(order_query, req.order_id)
+
+                if not order:
+                    raise HTTPException(status_code=404, detail="Order not found")
+
+                if order["status"] not in ['Ready for Dispatch', 'Packaging', 'Partially Fulfilled']:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Order cannot be scheduled from status: {order['status']}"
+                    )
+
+                order_number = order["order_number"]
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                year = datetime.now().year
+
+                schedule_id = f"SCHED-{order_number}-{timestamp}"
+                dispatch_number = f"DN-{order_number}-{year}"
+                tracking_number = f"TRK-{order_number}-{year}"
+
+                scheduled_date_parsed = datetime.strptime(req.scheduled_date, "%Y-%m-%d").date()
+                estimated_delivery_parsed = datetime.strptime(req.estimated_delivery_date, "%Y-%m-%d").date()
+
+                dispatch_insert = """
+                    INSERT INTO dispatch_records (
+                        dispatch_id, dispatch_number, sales_order_id, tracking_number,
+                        dispatch_date, status, created_by
+                    ) VALUES ($1, $2, $3, $4, $5, 'Scheduled', $6)
+                    RETURNING id
+                """
+                dispatch_row = await conn.fetchrow(
+                    dispatch_insert,
+                    schedule_id, dispatch_number, req.order_id, tracking_number,
+                    scheduled_date_parsed, req.created_by
+                )
+                dispatch_record_id = dispatch_row["id"]
+
+                if req.vehicle_number or req.driver_name:
+                    logistics_insert = """
+                        INSERT INTO dispatch_logistics (
+                            dispatch_record_id, transport_service, vehicle_number,
+                            driver_name, driver_contact, comments
+                        ) VALUES ($1, $2, $3, $4, $5, $6)
+                    """
+                    await conn.execute(
+                        logistics_insert,
+                        dispatch_record_id,
+                        req.delivery_type,
+                        req.vehicle_number or '',
+                        req.driver_name or '',
+                        req.driver_contact or '',
+                        req.special_instructions
+                    )
+
+                update_order_query = """
+                    UPDATE sales_orders
+                    SET delivery_date = $1,
+                        last_updated = NOW(),
+                        tracking_number = $2
+                    WHERE id = $3
+                """
+                await conn.execute(
+                    update_order_query,
+                    estimated_delivery_parsed,
+                    tracking_number,
+                    req.order_id
+                )
+
+                items_query = "SELECT * FROM sales_order_items WHERE sales_order_id = $1"
+                items_rows = await conn.fetch(items_query, req.order_id)
+                items = [_row_to_dispatch_item(item_row) for item_row in items_rows]
+
+                updated_order = await conn.fetchrow("SELECT * FROM sales_orders WHERE id = $1", req.order_id)
+
+                return {
+                    "success": True,
+                    "message": "Dispatch scheduled successfully",
+                    "scheduleId": schedule_id,
+                    "dispatchNumber": dispatch_number,
+                    "trackingNumber": tracking_number,
+                    "scheduledDate": req.scheduled_date,
+                    "estimatedDeliveryDate": req.estimated_delivery_date,
+                    "order": _row_to_dispatch_order(updated_order, items)
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

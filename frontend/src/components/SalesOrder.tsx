@@ -15,7 +15,7 @@ import {
   Trash2,
   Edit,
 } from 'lucide-react';
-import { salesOrdersApi, type SalesOrder } from '../lib/api';
+import { salesOrdersApi, type SalesOrder, inventoryApi, type InventoryItem, customerManagementApi } from '../lib/api';
 
 // Modal Component
 type ModalProps = {
@@ -28,6 +28,18 @@ type ModalProps = {
 
 function Modal({ open, title, onClose, children, width = 800 }: ModalProps) {
   const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -114,8 +126,6 @@ interface FormItem {
   name: string;
   quantity: number;
   unit: string;
-  weight: number;
-  weight_unit: string;
   unit_price: number;
   total_price: number;
 }
@@ -130,8 +140,6 @@ export default function SalesOrderComponent() {
   const [filterPriority, setFilterPriority] = useState<string>('All');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -151,10 +159,41 @@ export default function SalesOrderComponent() {
   });
   const [formItems, setFormItems] = useState<FormItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [inventorySearchResults, setInventorySearchResults] = useState<{ [key: number]: InventoryItem[] }>({});
+  const [searchingInventory, setSearchingInventory] = useState<{ [key: number]: boolean }>({});
+  const [showInventoryDropdown, setShowInventoryDropdown] = useState<{ [key: number]: boolean }>({});
+  
+  const [companySearchResults, setCompanySearchResults] = useState<string[]>([]);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [searchingCompany, setSearchingCompany] = useState(false);
+  const [customerData, setCustomerData] = useState<{
+    contactPersons: string[];
+    emails: string[];
+    phones: string[];
+    addresses: string[];
+  }>({
+    contactPersons: [],
+    emails: [],
+    phones: [],
+    addresses: [],
+  });
+  const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const [showEmailDropdown, setShowEmailDropdown] = useState(false);
+  const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
+  const [showAddressDropdown, setShowAddressDropdown] = useState(false);
+  
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
+  const [editStatus, setEditStatus] = useState('');
+  const [editPaymentStatus, setEditPaymentStatus] = useState('');
+  const [editPriority, setEditPriority] = useState('');
 
-  const statuses = ['All', 'Pending', 'Confirmed', 'In Production', 'Ready for Dispatch', 'Dispatched', 'Delivered', 'Cancelled'];
+  const statuses = ['All', 'Pending', 'Confirmed', 'In Production', 'Ready for Dispatch', 'Packaging', 'Partially Fulfilled', 'Dispatched', 'Delivered', 'Cancelled'];
+  const statusesForEdit = ['Pending', 'Confirmed', 'In Production', 'Ready for Dispatch', 'Packaging', 'Partially Fulfilled', 'Dispatched', 'Delivered', 'Cancelled'];
   const paymentStatuses = ['All', 'Pending', 'Partial', 'Paid', 'Overdue'];
+  const paymentStatusesForEdit = ['Pending', 'Partial', 'Paid', 'Overdue'];
   const priorities = ['All', 'Low', 'Medium', 'High', 'Urgent'];
+  const prioritiesForEdit = ['Low', 'Medium', 'High', 'Urgent'];
 
   // Scroll to top when component mounts
   useEffect(() => {
@@ -213,6 +252,38 @@ export default function SalesOrderComponent() {
     }
   };
 
+  const openEditModal = (order: SalesOrder) => {
+    setEditingOrder(order);
+    setEditStatus(order.status);
+    setEditPaymentStatus(order.paymentStatus);
+    setEditPriority(order.priority);
+    setShowEditModal(true);
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!editingOrder) return;
+
+    try {
+      setSubmitting(true);
+      await salesOrdersApi.update({
+        id: editingOrder.id,
+        status: editStatus as any,
+        payment_status: editPaymentStatus as any,
+        priority: editPriority as any,
+        last_updated_by: localStorage.getItem('ERP_USERNAME') || 'Admin',
+      });
+      alert('Order updated successfully');
+      setShowEditModal(false);
+      setEditingOrder(null);
+      loadOrders();
+    } catch (error) {
+      console.error('Failed to update order:', error);
+      alert('Failed to update order: ' + (error as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Delivered':
@@ -233,7 +304,6 @@ export default function SalesOrderComponent() {
     }
   };
 
-  // Form handling functions
   const resetForm = () => {
     setFormData({
       orderNumber: '',
@@ -251,6 +321,63 @@ export default function SalesOrderComponent() {
       notes: '',
     });
     setFormItems([]);
+    setCustomerData({
+      contactPersons: [],
+      emails: [],
+      phones: [],
+      addresses: [],
+    });
+    setCompanySearchResults([]);
+  };
+
+  const searchCompanies = async (query: string) => {
+    if (!query || query.length < 2) {
+      setCompanySearchResults([]);
+      setShowCompanyDropdown(false);
+      return;
+    }
+
+    try {
+      setSearchingCompany(true);
+      const response = await customerManagementApi.searchCompanies(query, 10);
+      setCompanySearchResults(response.companies);
+      setShowCompanyDropdown(true);
+    } catch (error) {
+      console.error('Failed to search companies:', error);
+    } finally {
+      setSearchingCompany(false);
+    }
+  };
+
+  const selectCompany = async (companyName: string) => {
+    setFormData({ ...formData, customerCompany: companyName });
+    setShowCompanyDropdown(false);
+    setCompanySearchResults([]);
+
+    try {
+      const response = await customerManagementApi.getByCompany(companyName);
+      setCustomerData({
+        contactPersons: response.contact_persons,
+        emails: response.emails,
+        phones: response.phones,
+        addresses: response.addresses,
+      });
+
+      if (response.contact_persons.length === 1) {
+        setFormData(prev => ({ ...prev, customerName: response.contact_persons[0] }));
+      }
+      if (response.emails.length === 1) {
+        setFormData(prev => ({ ...prev, customerEmail: response.emails[0] }));
+      }
+      if (response.phones.length === 1) {
+        setFormData(prev => ({ ...prev, customerContact: response.phones[0] }));
+      }
+      if (response.addresses.length === 1) {
+        setFormData(prev => ({ ...prev, customerAddress: response.addresses[0] }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch customer data:', error);
+    }
   };
 
   const addItem = () => {
@@ -260,8 +387,6 @@ export default function SalesOrderComponent() {
         name: '',
         quantity: 0,
         unit: 'kg',
-        weight: 0,
-        weight_unit: 'kg',
         unit_price: 0,
         total_price: 0,
       },
@@ -272,11 +397,60 @@ export default function SalesOrderComponent() {
     setFormItems(formItems.filter((_, i) => i !== index));
   };
 
+  const searchInventory = async (query: string, index: number) => {
+    if (!query || query.length < 2) {
+      setInventorySearchResults({ ...inventorySearchResults, [index]: [] });
+      setShowInventoryDropdown({ ...showInventoryDropdown, [index]: false });
+      return;
+    }
+
+    try {
+      setSearchingInventory({ ...searchingInventory, [index]: true });
+      const response = await inventoryApi.list({
+        query,
+        limit: 10,
+      });
+      setInventorySearchResults({ ...inventorySearchResults, [index]: response.items });
+      setShowInventoryDropdown({ ...showInventoryDropdown, [index]: true });
+    } catch (error) {
+      console.error('Failed to search inventory:', error);
+    } finally {
+      setSearchingInventory({ ...searchingInventory, [index]: false });
+    }
+  };
+
+  const selectInventoryItem = (index: number, item: InventoryItem) => {
+    console.log('Selecting inventory item:', {
+      index,
+      name: item.name,
+      unit: item.unit,
+      cost_per_unit: item.cost_per_unit,
+      currentItem: formItems[index]
+    });
+
+    const updatedItems = [...formItems];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      name: item.name,
+      unit: item.unit,
+      unit_price: item.cost_per_unit,
+    };
+
+    if (updatedItems[index].quantity > 0) {
+      updatedItems[index].total_price = updatedItems[index].quantity * updatedItems[index].unit_price;
+    }
+
+    console.log('Updated item:', updatedItems[index]);
+    
+    setFormItems(updatedItems);
+    setShowInventoryDropdown({ ...showInventoryDropdown, [index]: false });
+    setInventorySearchResults({ ...inventorySearchResults, [index]: [] });
+  };
+
   const updateItem = (index: number, field: keyof FormItem, value: any) => {
     const updatedItems = [...formItems];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
     
-    // Auto-calculate total price
     if (field === 'quantity' || field === 'unit_price') {
       updatedItems[index].total_price = updatedItems[index].quantity * updatedItems[index].unit_price;
     }
@@ -324,7 +498,11 @@ export default function SalesOrderComponent() {
         final_amount: finalAmount,
         created_by: username,
         last_updated_by: username,
-        items: formItems,
+        items: formItems.map(item => ({
+          ...item,
+          weight: 0,
+          weight_unit: 'kg',
+        })),
       });
 
       alert('Sales order created successfully');
@@ -642,29 +820,28 @@ export default function SalesOrderComponent() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    {order.status !== 'Confirmed' && (
-                      <button
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setShowEditModal(true);
-                        }}
-                        className="btn"
-                        style={{
-                          padding: 8,
-                          background: 'transparent',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
-                          cursor: 'pointer',
-                          color: 'var(--fg)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                        title="Edit Order"
-                      >
-                        <Edit width={16} height={16} color="currentColor" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => openEditModal(order)}
+                      className="btn"
+                      style={{
+                        padding: '6px 12px',
+                        background: '#e3f2fd',
+                        border: '1px solid #1976d2',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        color: '#1565c0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                      title="Edit Order Status"
+                    >
+                      <Edit width={14} height={14} color="currentColor" />
+                      Edit
+                    </button>
                     <button
                       onClick={() => handleDelete(order.id)}
                       className="btn"
@@ -958,7 +1135,7 @@ export default function SalesOrderComponent() {
                       }}
                     />
                   </div>
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
                       Company Name *
                     </label>
@@ -966,10 +1143,23 @@ export default function SalesOrderComponent() {
                       required
                       type="text"
                       value={formData.customerCompany}
-                      onChange={(e) => setFormData({ ...formData, customerCompany: e.target.value })}
-                      placeholder="ABC Sweets Ltd"
+                      onChange={(e) => {
+                        setFormData({ ...formData, customerCompany: e.target.value });
+                        searchCompanies(e.target.value);
+                      }}
+                      onFocus={() => {
+                        if (formData.customerCompany.length >= 2) {
+                          searchCompanies(formData.customerCompany);
+                        }
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setShowCompanyDropdown(false);
+                        }, 200);
+                      }}
+                      placeholder="Start typing company name..."
                       style={{
-                        width: '80%',
+                        width: '90%',
                         padding: '8px 12px',
                         background: 'var(--bg)',
                         border: '1px solid var(--border)',
@@ -977,83 +1167,207 @@ export default function SalesOrderComponent() {
                         fontSize: 14,
                       }}
                     />
+                    {showCompanyDropdown && companySearchResults.length > 0 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: '10%',
+                          zIndex: 1000,
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          marginTop: 4,
+                          maxHeight: 200,
+                          overflowY: 'auto',
+                          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                        }}
+                      >
+                        {companySearchResults.map((company, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => selectCompany(company)}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--border)',
+                              fontSize: 13,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--bg)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            {company}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
                       Contact Person *
                     </label>
-                    <input
-                      required
-                      type="text"
-                      value={formData.customerName}
-                      onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                      placeholder="John Doe"
-                      style={{
-                        width: '80%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 14,
-                      }}
-                    />
+                    {customerData.contactPersons.length > 0 ? (
+                      <select
+                        required
+                        value={formData.customerName}
+                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                        style={{
+                          width: '90%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">Select contact person</option>
+                        {customerData.contactPersons.map((person, idx) => (
+                          <option key={idx} value={person}>{person}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        required
+                        type="text"
+                        value={formData.customerName}
+                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                        placeholder="John Doe"
+                        style={{
+                          width: '90%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                        }}
+                      />
+                    )}
                   </div>
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
                       Contact Number
                     </label>
-                    <input
-                      type="tel"
-                      value={formData.customerContact}
-                      onChange={(e) => setFormData({ ...formData, customerContact: e.target.value })}
-                      placeholder="+91 98765 43210"
-                      style={{
-                        width: '80%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 14,
-                      }}
-                    />
+                    {customerData.phones.length > 0 ? (
+                      <select
+                        value={formData.customerContact}
+                        onChange={(e) => setFormData({ ...formData, customerContact: e.target.value })}
+                        style={{
+                          width: '90%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">Select contact number</option>
+                        {customerData.phones.map((phone, idx) => (
+                          <option key={idx} value={phone}>{phone}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="tel"
+                        value={formData.customerContact}
+                        onChange={(e) => setFormData({ ...formData, customerContact: e.target.value })}
+                        placeholder="+91 98765 43210"
+                        style={{
+                          width: '90%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                        }}
+                      />
+                    )}
                   </div>
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
                       Email
                     </label>
-                    <input
-                      type="email"
-                      value={formData.customerEmail}
-                      onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
-                      placeholder="contact@company.com"
-                      style={{
-                        width: '80%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 14,
-                      }}
-                    />
+                    {customerData.emails.length > 0 ? (
+                      <select
+                        value={formData.customerEmail}
+                        onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
+                        style={{
+                          width: '90%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">Select email</option>
+                        {customerData.emails.map((email, idx) => (
+                          <option key={idx} value={email}>{email}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="email"
+                        value={formData.customerEmail}
+                        onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
+                        placeholder="contact@company.com"
+                        style={{
+                          width: '90%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                        }}
+                      />
+                    )}
                   </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ gridColumn: '1 / -1', position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
                       Address
                     </label>
-                    <input
-                      type="text"
-                      value={formData.customerAddress}
-                      onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })}
-                      placeholder="123 Main Street, City - 400001"
-                      style={{
-                        width: '80%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 14,
-                      }}
-                    />
+                    {customerData.addresses.length > 0 ? (
+                      <select
+                        value={formData.customerAddress}
+                        onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })}
+                        style={{
+                          width: '95%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">Select address</option>
+                        {customerData.addresses.map((address, idx) => (
+                          <option key={idx} value={address}>{address}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={formData.customerAddress}
+                        onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })}
+                        placeholder="123 Main Street, City - 400001"
+                        style={{
+                          width: '95%',
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          fontSize: 14,
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1180,22 +1494,79 @@ export default function SalesOrderComponent() {
                         borderRadius: 8,
                       }}
                     >
-                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 120px', gap: 12, alignItems: 'center' }}>
-                        <input
-                          required
-                          type="text"
-                          placeholder="Item name"
-                          value={item.name}
-                          onChange={(e) => updateItem(index, 'name', e.target.value)}
-                          style={{
-                            width: '80%',
-                            padding: '6px 10px',
-                            background: 'var(--panel)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            fontSize: 13,
-                          }}
-                        />
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 120px', gap: 12, alignItems: 'center' }}>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            required
+                            type="text"
+                            placeholder="Search item name"
+                            value={item.name}
+                            onChange={(e) => {
+                              updateItem(index, 'name', e.target.value);
+                              searchInventory(e.target.value, index);
+                            }}
+                            onFocus={() => {
+                              if (item.name.length >= 2) {
+                                searchInventory(item.name, index);
+                              }
+                            }}
+                            onBlur={() => {
+                              setTimeout(() => {
+                                setShowInventoryDropdown({ ...showInventoryDropdown, [index]: false });
+                              }, 200);
+                            }}
+                            style={{
+                              width: '90%',
+                              padding: '6px 10px',
+                              background: 'var(--panel)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 6,
+                              fontSize: 13,
+                            }}
+                          />
+                          {showInventoryDropdown[index] && inventorySearchResults[index]?.length > 0 && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                zIndex: 1000,
+                                background: 'var(--panel)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 6,
+                                marginTop: 4,
+                                maxHeight: 200,
+                                overflowY: 'auto',
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                              }}
+                            >
+                              {inventorySearchResults[index].map((invItem) => (
+                                <div
+                                  key={invItem.id}
+                                  onClick={() => selectInventoryItem(index, invItem)}
+                                  style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    borderBottom: '1px solid var(--border)',
+                                    fontSize: 13,
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'var(--bg)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 600 }}>{invItem.name}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                    {invItem.sku} | Stock: {invItem.current_stock} {invItem.unit} | ₹{invItem.cost_per_unit}/{invItem.unit}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <input
                           required
                           type="number"
@@ -1203,7 +1574,7 @@ export default function SalesOrderComponent() {
                           value={item.quantity || ''}
                           onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                           style={{
-                            width: '80%',
+                            width: '90%',
                             padding: '6px 10px',
                             background: 'var(--panel)',
                             border: '1px solid var(--border)',
@@ -1218,37 +1589,7 @@ export default function SalesOrderComponent() {
                           value={item.unit}
                           onChange={(e) => updateItem(index, 'unit', e.target.value)}
                           style={{
-                            width: '80%',
-                            padding: '6px 10px',
-                            background: 'var(--panel)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            fontSize: 13,
-                          }}
-                        />
-                        <input
-                          required
-                          type="number"
-                          placeholder="Weight"
-                          value={item.weight || ''}
-                          onChange={(e) => updateItem(index, 'weight', parseFloat(e.target.value) || 0)}
-                          style={{
-                            width: '80%',
-                            padding: '6px 10px',
-                            background: 'var(--panel)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            fontSize: 13,
-                          }}
-                        />
-                        <input
-                          required
-                          type="text"
-                          placeholder="Weight unit"
-                          value={item.weight_unit}
-                          onChange={(e) => updateItem(index, 'weight_unit', e.target.value)}
-                          style={{
-                            width: '80%',
+                            width: '90%',
                             padding: '6px 10px',
                             background: 'var(--panel)',
                             border: '1px solid var(--border)',
@@ -1263,7 +1604,7 @@ export default function SalesOrderComponent() {
                           value={item.unit_price || ''}
                           onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
                           style={{
-                            width: '80%',
+                            width: '90%',
                             padding: '6px 10px',
                             background: 'var(--panel)',
                             border: '1px solid var(--border)',
@@ -1428,13 +1769,163 @@ export default function SalesOrderComponent() {
         </Modal>
       )}
 
-      {showEditModal && selectedOrder && (
-        <Modal open={showEditModal} title="Edit Sales Order" onClose={() => { setShowEditModal(false); setSelectedOrder(null); }}>
-          <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)' }}>
-            Edit order form coming soon...
+      {showEditModal && editingOrder && (
+        <Modal open={showEditModal} title="Edit Sales Order" onClose={() => {
+          setShowEditModal(false);
+          setEditingOrder(null);
+        }} width={600}>
+          <div style={{ display: 'grid', gap: 20 }}>
+            <div style={{
+              padding: 16,
+              background: 'var(--bg)',
+              borderRadius: 10,
+              border: '1px solid var(--border)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{editingOrder.customerCompany}</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>{editingOrder.orderNumber}</div>
+                </div>
+                <div style={{ fontWeight: 600, color: '#00695c' }}>
+                  ₹{editingOrder.finalAmount.toLocaleString()}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+                <div>
+                  <span style={{ color: 'var(--muted)' }}>Customer: </span>
+                  <span style={{ fontWeight: 600 }}>{editingOrder.customerName}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--muted)' }}>Items: </span>
+                  <span style={{ fontWeight: 600 }}>{editingOrder.items.length}</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                Order Status
+              </label>
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: 'var(--panel)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                }}
+              >
+                {statusesForEdit.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <div style={{ marginTop: 8, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 12 }}>
+                <strong>Note:</strong> Change status to "Ready for Dispatch" or "Packaging" to make this order visible in Sales Order Dispatch module.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                Payment Status
+              </label>
+              <select
+                value={editPaymentStatus}
+                onChange={(e) => setEditPaymentStatus(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: 'var(--panel)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                }}
+              >
+                {paymentStatusesForEdit.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                Priority
+              </label>
+              <select
+                value={editPriority}
+                onChange={(e) => setEditPriority(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: 'var(--panel)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                }}
+              >
+                {prioritiesForEdit.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'flex-end',
+              paddingTop: 16,
+              borderTop: '1px solid var(--border)'
+            }}>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingOrder(null);
+                }}
+                disabled={submitting}
+                style={{
+                  padding: '10px 20px',
+                  background: 'transparent',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.5 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateOrder}
+                disabled={submitting}
+                style={{
+                  padding: '10px 20px',
+                  background: '#00695c',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Edit width={16} height={16} />
+                {submitting ? 'Updating...' : 'Update Order'}
+              </button>
+            </div>
           </div>
         </Modal>
       )}
+
     </div>
   );
 }

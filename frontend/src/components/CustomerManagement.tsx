@@ -29,13 +29,10 @@ function CustomerManagementComponent() {
 
   const [formData, setFormData] = useState({
     company_name: '',
-    contact_person: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
+    contact_persons: [''] as string[],
+    emails: [''] as string[],
+    phones: [''] as string[],
+    addresses: [{ address: '', city: '', state: '', pincode: '' }] as { address: string; city?: string; state?: string; pincode?: string }[],
     gstin: '',
     customer_type: 'Regular' as 'Regular' | 'Premium' | 'Wholesale' | 'Retail',
     status: 'Active' as 'Active' | 'Inactive' | 'Blocked',
@@ -71,15 +68,29 @@ function CustomerManagementComponent() {
 
   const handleCreateCustomer = async () => {
     try {
-      await customerManagementApi.create({
-        ...formData,
+      const payload = {
+        company_name: formData.company_name,
+        contact_persons: formData.contact_persons.filter(c => c.trim()),
+        emails: formData.emails.filter(e => e.trim()),
+        phones: formData.phones.filter(p => p.trim()),
+        addresses: formData.addresses.filter(a => a.address.trim()),
+        gstin: formData.gstin,
+        customer_type: formData.customer_type,
+        status: formData.status,
+        credit_limit: formData.credit_limit,
+        outstanding_balance: formData.outstanding_balance,
+        payment_terms: formData.payment_terms,
+        notes: formData.notes,
         created_by: localStorage.getItem('ERP_USERNAME') || undefined,
         last_updated_by: localStorage.getItem('ERP_USERNAME') || undefined,
-      });
+      };
+      console.log('Frontend: Sending customer data:', JSON.stringify(payload, null, 2));
+      await customerManagementApi.create(payload);
       setShowAddModal(false);
       resetForm();
       loadCustomers();
     } catch (err) {
+      console.error('Frontend: Error creating customer:', err);
       setError(err instanceof Error ? err.message : 'Failed to create customer');
     }
   };
@@ -113,13 +124,10 @@ function CustomerManagementComponent() {
   const resetForm = () => {
     setFormData({
       company_name: '',
-      contact_person: '',
-      email: '',
-      phone: '',
-      address: '',
-      city: '',
-      state: '',
-      pincode: '',
+      contact_persons: [''],
+      emails: [''],
+      phones: [''],
+      addresses: [{ address: '', city: '', state: '', pincode: '' }],
       gstin: '',
       customer_type: 'Regular',
       status: 'Active',
@@ -134,13 +142,10 @@ function CustomerManagementComponent() {
     setEditingCustomer(customer);
     setFormData({
       company_name: customer.companyName,
-      contact_person: customer.contactPerson,
-      email: customer.email || '',
-      phone: customer.phone || '',
-      address: customer.address || '',
-      city: customer.city || '',
-      state: customer.state || '',
-      pincode: customer.pincode || '',
+      contact_persons: customer.contactPersons.length > 0 ? customer.contactPersons : [''],
+      emails: customer.emails.length > 0 ? customer.emails : [''],
+      phones: customer.phones.length > 0 ? customer.phones : [''],
+      addresses: customer.addresses.length > 0 ? customer.addresses : [{ address: '', city: '', state: '', pincode: '' }],
       gstin: customer.gstin || '',
       customer_type: customer.customerType,
       status: customer.status,
@@ -338,7 +343,9 @@ function CustomerManagementComponent() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px' }}>
                   <div style={{ flex: 1 }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 4px 0' }}>{customer.companyName}</h3>
-                    <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0 }}>{customer.contactPerson}</p>
+                    <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0 }}>
+                      {customer.contactPersons.length > 0 && customer.contactPersons[0] ? customer.contactPersons[0] : 'No contact'}
+                    </p>
                   </div>
                   <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                     <button
@@ -390,22 +397,22 @@ function CustomerManagementComponent() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', marginBottom: '12px' }}>
-                  {customer.email && (
+                  {customer.emails.length > 0 && customer.emails[0] && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Mail size={14} color="var(--fg)" />
-                      <span style={{ wordBreak: 'break-all' }}>{customer.email}</span>
+                      <span style={{ wordBreak: 'break-all' }}>{customer.emails[0]}</span>
                     </div>
                   )}
-                  {customer.phone && (
+                  {customer.phones.length > 0 && customer.phones[0] && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Phone size={14} color="var(--fg)" />
-                      <span>{customer.phone}</span>
+                      <span>{customer.phones[0]}</span>
                     </div>
                   )}
-                  {customer.city && (
+                  {customer.addresses.length > 0 && customer.addresses[0]?.city && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <MapPin size={14} color="var(--fg)" />
-                      <span>{customer.city}, {customer.state}</span>
+                      <span>{customer.addresses[0].city}{customer.addresses[0].state ? `, ${customer.addresses[0].state}` : ''}</span>
                     </div>
                   )}
                   {customer.gstin && (
@@ -489,155 +496,348 @@ function CustomerManagementComponent() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      Company Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.company_name}
-                      onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                      style={{
-                        width: '87%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      Contact Person *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.contact_person}
-                      onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
-                      style={{
-                        width: '87%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      style={{
-                        width: '87%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      style={{
-                        width: '87%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
-                  </div>
-                </div>
-
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                    Address
+                    Company Name *
                   </label>
-                  <textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    rows={2}
+                  <input
+                    type="text"
+                    value={formData.company_name}
+                    onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
                     style={{
                       width: '94%',
                       padding: '8px 12px',
                       background: 'var(--bg)',
                       border: '1px solid var(--border)',
                       borderRadius: '8px',
-                      resize: 'vertical',
                     }}
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      City
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: '600' }}>
+                      Contact Persons (Max 3)
                     </label>
-                    <input
-                      type="text"
-                      value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                      style={{
-                        width: '87%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
+                    {formData.contact_persons.length < 3 && (
+                      <button
+                        onClick={() => setFormData({ ...formData, contact_persons: [...formData.contact_persons, ''] })}
+                        style={{
+                          padding: '4px 8px',
+                          background: 'var(--fg)',
+                          color: 'var(--bg)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Plus size={14} />
+                        Add
+                      </button>
+                    )}
                   </div>
+                  {formData.contact_persons.map((contact, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                      <input
+                        type="text"
+                        value={contact}
+                        onChange={(e) => {
+                          const newContacts = [...formData.contact_persons];
+                          newContacts[idx] = e.target.value;
+                          setFormData({ ...formData, contact_persons: newContacts });
+                        }}
+                        placeholder={`Contact Person ${idx + 1}`}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                        }}
+                      />
+                      {formData.contact_persons.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const newContacts = formData.contact_persons.filter((_, i) => i !== idx);
+                            setFormData({ ...formData, contact_persons: newContacts });
+                          }}
+                          style={{
+                            padding: '8px',
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={16} color="#ef4444" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      State
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: '600' }}>
+                      Emails (Max 3)
                     </label>
-                    <input
-                      type="text"
-                      value={formData.state}
-                      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                      style={{
-                        width: '87%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
+                    {formData.emails.length < 3 && (
+                      <button
+                        onClick={() => setFormData({ ...formData, emails: [...formData.emails, ''] })}
+                        style={{
+                          padding: '4px 8px',
+                          background: 'var(--fg)',
+                          color: 'var(--bg)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Plus size={14} />
+                        Add
+                      </button>
+                    )}
                   </div>
+                  {formData.emails.map((email, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => {
+                          const newEmails = [...formData.emails];
+                          newEmails[idx] = e.target.value;
+                          setFormData({ ...formData, emails: newEmails });
+                        }}
+                        placeholder={`Email ${idx + 1}`}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                        }}
+                      />
+                      {formData.emails.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const newEmails = formData.emails.filter((_, i) => i !== idx);
+                            setFormData({ ...formData, emails: newEmails });
+                          }}
+                          style={{
+                            padding: '8px',
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={16} color="#ef4444" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600' }}>
-                      Pincode
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: '600' }}>
+                      Phones (Max 3)
                     </label>
-                    <input
-                      type="text"
-                      value={formData.pincode}
-                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                      style={{
-                        width: '82%',
-                        padding: '8px 12px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '8px',
-                      }}
-                    />
+                    {formData.phones.length < 3 && (
+                      <button
+                        onClick={() => setFormData({ ...formData, phones: [...formData.phones, ''] })}
+                        style={{
+                          padding: '4px 8px',
+                          background: 'var(--fg)',
+                          color: 'var(--bg)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Plus size={14} />
+                        Add
+                      </button>
+                    )}
                   </div>
+                  {formData.phones.map((phone, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => {
+                          const newPhones = [...formData.phones];
+                          newPhones[idx] = e.target.value;
+                          setFormData({ ...formData, phones: newPhones });
+                        }}
+                        placeholder={`Phone ${idx + 1}`}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                        }}
+                      />
+                      {formData.phones.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const newPhones = formData.phones.filter((_, i) => i !== idx);
+                            setFormData({ ...formData, phones: newPhones });
+                          }}
+                          style={{
+                            padding: '8px',
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={16} color="#ef4444" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: '600' }}>
+                      Addresses (Max 5)
+                    </label>
+                    {formData.addresses.length < 5 && (
+                      <button
+                        onClick={() => setFormData({ ...formData, addresses: [...formData.addresses, { address: '', city: '', state: '', pincode: '' }] })}
+                        style={{
+                          padding: '4px 8px',
+                          background: 'var(--fg)',
+                          color: 'var(--bg)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Plus size={14} />
+                        Add
+                      </button>
+                    )}
+                  </div>
+                  {formData.addresses.map((addr, idx) => (
+                    <div key={idx} style={{ padding: '12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted)' }}>Address {idx + 1}</span>
+                        {formData.addresses.length > 1 && (
+                          <button
+                            onClick={() => {
+                              const newAddresses = formData.addresses.filter((_, i) => i !== idx);
+                              setFormData({ ...formData, addresses: newAddresses });
+                            }}
+                            style={{
+                              padding: '4px',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <X size={16} color="#ef4444" />
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={addr.address}
+                        onChange={(e) => {
+                          const newAddresses = [...formData.addresses];
+                          newAddresses[idx] = { ...newAddresses[idx], address: e.target.value };
+                          setFormData({ ...formData, addresses: newAddresses });
+                        }}
+                        placeholder="Street Address"
+                        rows={2}
+                        style={{
+                          width: '94%',
+                          padding: '8px 12px',
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          resize: 'vertical',
+                          marginBottom: '8px',
+                        }}
+                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                        <input
+                          type="text"
+                          value={addr.city || ''}
+                          onChange={(e) => {
+                            const newAddresses = [...formData.addresses];
+                            newAddresses[idx] = { ...newAddresses[idx], city: e.target.value };
+                            setFormData({ ...formData, addresses: newAddresses });
+                          }}
+                          placeholder="City"
+                          style={{
+                            padding: '8px 12px',
+                            background: 'var(--panel)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                          }}
+                        />
+                        <input
+                          type="text"
+                          value={addr.state || ''}
+                          onChange={(e) => {
+                            const newAddresses = [...formData.addresses];
+                            newAddresses[idx] = { ...newAddresses[idx], state: e.target.value };
+                            setFormData({ ...formData, addresses: newAddresses });
+                          }}
+                          placeholder="State"
+                          style={{
+                            padding: '8px 12px',
+                            background: 'var(--panel)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                          }}
+                        />
+                        <input
+                          type="text"
+                          value={addr.pincode || ''}
+                          onChange={(e) => {
+                            const newAddresses = [...formData.addresses];
+                            newAddresses[idx] = { ...newAddresses[idx], pincode: e.target.value };
+                            setFormData({ ...formData, addresses: newAddresses });
+                          }}
+                          placeholder="Pincode"
+                          style={{
+                            padding: '8px 12px',
+                            background: 'var(--panel)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>

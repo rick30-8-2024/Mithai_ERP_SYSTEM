@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database.db_pool import get_db_pool
@@ -16,17 +16,41 @@ def _to_float(v) -> float:
     return 0.0 if v is None else float(v)
 
 
-def _row_to_customer(row) -> dict:
+async def _row_to_customer(row, pool) -> dict:
+    customer_id = str(row["id"])
+    
+    contacts_rows = await pool.fetch(
+        "SELECT contact_person, is_primary FROM customer_contacts WHERE customer_id = $1 ORDER BY is_primary DESC, created_date ASC",
+        row["id"]
+    )
+    emails_rows = await pool.fetch(
+        "SELECT email, is_primary FROM customer_emails WHERE customer_id = $1 ORDER BY is_primary DESC, created_date ASC",
+        row["id"]
+    )
+    phones_rows = await pool.fetch(
+        "SELECT phone, is_primary FROM customer_phones WHERE customer_id = $1 ORDER BY is_primary DESC, created_date ASC",
+        row["id"]
+    )
+    addresses_rows = await pool.fetch(
+        "SELECT address, city, state, pincode, is_primary FROM customer_addresses WHERE customer_id = $1 ORDER BY is_primary DESC, created_date ASC",
+        row["id"]
+    )
+    
     return {
-        "id": str(row["id"]),
+        "id": customer_id,
         "companyName": row["company_name"],
-        "contactPerson": row["contact_person"],
-        "email": row.get("email"),
-        "phone": row.get("phone"),
-        "address": row.get("address"),
-        "city": row.get("city"),
-        "state": row.get("state"),
-        "pincode": row.get("pincode"),
+        "contactPersons": [r["contact_person"] for r in contacts_rows],
+        "emails": [r["email"] for r in emails_rows],
+        "phones": [r["phone"] for r in phones_rows],
+        "addresses": [
+            {
+                "address": r["address"],
+                "city": r.get("city"),
+                "state": r.get("state"),
+                "pincode": r.get("pincode"),
+            }
+            for r in addresses_rows
+        ],
         "gstin": row.get("gstin"),
         "customerType": row["customer_type"],
         "status": row["status"],
@@ -54,15 +78,18 @@ class GetRequest(BaseModel):
     id: str
 
 
-class CreateRequest(BaseModel):
-    company_name: str
-    contact_person: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
+class CustomerAddress(BaseModel):
+    address: str
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+
+class CreateRequest(BaseModel):
+    company_name: str
+    contact_persons: List[str] = []
+    emails: List[str] = []
+    phones: List[str] = []
+    addresses: List[CustomerAddress] = []
     gstin: Optional[str] = None
     customer_type: str = "Regular"
     status: str = "Active"
@@ -77,13 +104,10 @@ class CreateRequest(BaseModel):
 class UpdateRequest(BaseModel):
     id: str
     company_name: Optional[str] = None
-    contact_person: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
+    contact_persons: Optional[List[str]] = None
+    emails: Optional[List[str]] = None
+    phones: Optional[List[str]] = None
+    addresses: Optional[List[CustomerAddress]] = None
     gstin: Optional[str] = None
     customer_type: Optional[str] = None
     status: Optional[str] = None
@@ -109,27 +133,30 @@ async def list_customers(req: ListRequest):
     params = []
     param_count = 1
 
-    # Search filter
     if req.query:
-        query += f" AND (company_name ILIKE ${param_count} OR contact_person ILIKE ${param_count} OR email ILIKE ${param_count} OR phone ILIKE ${param_count} OR city ILIKE ${param_count})"
+        query += f"""
+            AND (
+                company_name ILIKE ${param_count}
+                OR id IN (SELECT customer_id FROM customer_contacts WHERE contact_person ILIKE ${param_count})
+                OR id IN (SELECT customer_id FROM customer_emails WHERE email ILIKE ${param_count})
+                OR id IN (SELECT customer_id FROM customer_phones WHERE phone ILIKE ${param_count})
+            )
+        """
         params.append(f"%{req.query}%")
         param_count += 1
 
-    # Customer type filter
     if req.customer_type:
         query += f" AND customer_type = ${param_count}"
         params.append(req.customer_type)
         param_count += 1
 
-    # Status filter
     if req.status:
         query += f" AND status = ${param_count}"
         params.append(req.status)
         param_count += 1
 
-    # City filter
     if req.city:
-        query += f" AND city ILIKE ${param_count}"
+        query += f" AND id IN (SELECT customer_id FROM customer_addresses WHERE city ILIKE ${param_count})"
         params.append(f"%{req.city}%")
         param_count += 1
 
@@ -143,7 +170,7 @@ async def list_customers(req: ListRequest):
     params.extend([req.limit, req.offset])
 
     rows = await pool.fetch(query, *params)
-    customers = [_row_to_customer(row) for row in rows]
+    customers = [await _row_to_customer(row, pool) for row in rows]
 
     return {
         "items": customers,
@@ -163,51 +190,80 @@ async def get_customer(req: GetRequest):
     if not row:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    return _row_to_customer(row)
+    return await _row_to_customer(row, pool)
 
 
 @customer_management_router.post("/create")
 async def create_customer(req: CreateRequest):
     pool = await get_db_pool()
+    
+    print("Backend: Received customer data:")
+    print(f"  company_name: {req.company_name}")
+    print(f"  contact_persons: {req.contact_persons}")
+    print(f"  emails: {req.emails}")
+    print(f"  phones: {req.phones}")
+    print(f"  addresses: {req.addresses}")
+    print(f"  gstin: {req.gstin}")
+    print(f"  customer_type: {req.customer_type}")
 
     try:
-        # Insert customer
-        insert_query = """
-            INSERT INTO customers (
-                company_name, contact_person, email, phone, address, city, state,
-                pincode, gstin, customer_type, status, credit_limit, outstanding_balance,
-                payment_terms, notes, created_by, last_updated_by
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
-            ) RETURNING id
-        """
-        row = await pool.fetchrow(
-            insert_query,
-            req.company_name,
-            req.contact_person,
-            req.email,
-            req.phone,
-            req.address,
-            req.city,
-            req.state,
-            req.pincode,
-            req.gstin,
-            req.customer_type,
-            req.status,
-            req.credit_limit,
-            req.outstanding_balance,
-            req.payment_terms,
-            req.notes,
-            req.created_by,
-            req.last_updated_by,
-        )
-        customer_id = row["id"]
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                insert_query = """
+                    INSERT INTO customers (
+                        company_name, gstin, customer_type, status, credit_limit,
+                        outstanding_balance, payment_terms, notes, created_by, last_updated_by
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    RETURNING id
+                """
+                row = await conn.fetchrow(
+                    insert_query,
+                    req.company_name,
+                    req.gstin,
+                    req.customer_type,
+                    req.status,
+                    req.credit_limit,
+                    req.outstanding_balance,
+                    req.payment_terms,
+                    req.notes,
+                    req.created_by,
+                    req.last_updated_by,
+                )
+                customer_id = row["id"]
 
-        return {
-            "success": True,
-            "id": str(customer_id),
-            "message": "Customer created successfully",
-        }
+                for idx, contact in enumerate(req.contact_persons):
+                    if contact.strip():
+                        await conn.execute(
+                            "INSERT INTO customer_contacts (customer_id, contact_person, is_primary) VALUES ($1, $2, $3)",
+                            customer_id, contact, idx == 0
+                        )
+
+                for idx, email in enumerate(req.emails):
+                    if email.strip():
+                        await conn.execute(
+                            "INSERT INTO customer_emails (customer_id, email, is_primary) VALUES ($1, $2, $3)",
+                            customer_id, email, idx == 0
+                        )
+
+                for idx, phone in enumerate(req.phones):
+                    if phone.strip():
+                        await conn.execute(
+                            "INSERT INTO customer_phones (customer_id, phone, is_primary) VALUES ($1, $2, $3)",
+                            customer_id, phone, idx == 0
+                        )
+
+                for idx, addr in enumerate(req.addresses):
+                    if addr.address.strip():
+                        await conn.execute(
+                            "INSERT INTO customer_addresses (customer_id, address, city, state, pincode, is_primary) VALUES ($1, $2, $3, $4, $5, $6)",
+                            customer_id, addr.address, addr.city, addr.state, addr.pincode, idx == 0
+                        )
+
+                return {
+                    "success": True,
+                    "id": str(customer_id),
+                    "message": "Customer created successfully",
+                }
 
     except UniqueViolationError:
         raise HTTPException(status_code=400, detail="Customer already exists")
@@ -220,91 +276,98 @@ async def update_customer(req: UpdateRequest):
     pool = await get_db_pool()
 
     try:
-        # Check if customer exists
-        check_query = "SELECT id FROM customers WHERE id = $1"
-        existing = await pool.fetchrow(check_query, req.id)
-        if not existing:
-            raise HTTPException(status_code=404, detail="Customer not found")
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                check_query = "SELECT id FROM customers WHERE id = $1"
+                existing = await conn.fetchrow(check_query, req.id)
+                if not existing:
+                    raise HTTPException(status_code=404, detail="Customer not found")
 
-        # Build update query dynamically
-        updates = []
-        params = []
-        param_count = 1
+                updates = []
+                params = []
+                param_count = 1
 
-        if req.company_name is not None:
-            updates.append(f"company_name = ${param_count}")
-            params.append(req.company_name)
-            param_count += 1
-        if req.contact_person is not None:
-            updates.append(f"contact_person = ${param_count}")
-            params.append(req.contact_person)
-            param_count += 1
-        if req.email is not None:
-            updates.append(f"email = ${param_count}")
-            params.append(req.email)
-            param_count += 1
-        if req.phone is not None:
-            updates.append(f"phone = ${param_count}")
-            params.append(req.phone)
-            param_count += 1
-        if req.address is not None:
-            updates.append(f"address = ${param_count}")
-            params.append(req.address)
-            param_count += 1
-        if req.city is not None:
-            updates.append(f"city = ${param_count}")
-            params.append(req.city)
-            param_count += 1
-        if req.state is not None:
-            updates.append(f"state = ${param_count}")
-            params.append(req.state)
-            param_count += 1
-        if req.pincode is not None:
-            updates.append(f"pincode = ${param_count}")
-            params.append(req.pincode)
-            param_count += 1
-        if req.gstin is not None:
-            updates.append(f"gstin = ${param_count}")
-            params.append(req.gstin)
-            param_count += 1
-        if req.customer_type is not None:
-            updates.append(f"customer_type = ${param_count}")
-            params.append(req.customer_type)
-            param_count += 1
-        if req.status is not None:
-            updates.append(f"status = ${param_count}")
-            params.append(req.status)
-            param_count += 1
-        if req.credit_limit is not None:
-            updates.append(f"credit_limit = ${param_count}")
-            params.append(req.credit_limit)
-            param_count += 1
-        if req.outstanding_balance is not None:
-            updates.append(f"outstanding_balance = ${param_count}")
-            params.append(req.outstanding_balance)
-            param_count += 1
-        if req.payment_terms is not None:
-            updates.append(f"payment_terms = ${param_count}")
-            params.append(req.payment_terms)
-            param_count += 1
-        if req.notes is not None:
-            updates.append(f"notes = ${param_count}")
-            params.append(req.notes)
-            param_count += 1
-        if req.last_updated_by is not None:
-            updates.append(f"last_updated_by = ${param_count}")
-            params.append(req.last_updated_by)
-            param_count += 1
+                if req.company_name is not None:
+                    updates.append(f"company_name = ${param_count}")
+                    params.append(req.company_name)
+                    param_count += 1
+                if req.gstin is not None:
+                    updates.append(f"gstin = ${param_count}")
+                    params.append(req.gstin)
+                    param_count += 1
+                if req.customer_type is not None:
+                    updates.append(f"customer_type = ${param_count}")
+                    params.append(req.customer_type)
+                    param_count += 1
+                if req.status is not None:
+                    updates.append(f"status = ${param_count}")
+                    params.append(req.status)
+                    param_count += 1
+                if req.credit_limit is not None:
+                    updates.append(f"credit_limit = ${param_count}")
+                    params.append(req.credit_limit)
+                    param_count += 1
+                if req.outstanding_balance is not None:
+                    updates.append(f"outstanding_balance = ${param_count}")
+                    params.append(req.outstanding_balance)
+                    param_count += 1
+                if req.payment_terms is not None:
+                    updates.append(f"payment_terms = ${param_count}")
+                    params.append(req.payment_terms)
+                    param_count += 1
+                if req.notes is not None:
+                    updates.append(f"notes = ${param_count}")
+                    params.append(req.notes)
+                    param_count += 1
+                if req.last_updated_by is not None:
+                    updates.append(f"last_updated_by = ${param_count}")
+                    params.append(req.last_updated_by)
+                    param_count += 1
 
-        # Always update last_updated timestamp
-        updates.append(f"last_updated = NOW()")
+                updates.append(f"last_updated = NOW()")
 
-        if updates:
-            update_query = f"UPDATE customers SET {', '.join(updates)} WHERE id = ${param_count}"
-            params.append(req.id)
-            await pool.execute(update_query, *params)
+                if updates:
+                    update_query = f"UPDATE customers SET {', '.join(updates)} WHERE id = ${param_count}"
+                    params.append(req.id)
+                    await conn.execute(update_query, *params)
 
-        return {"success": True, "message": "Customer updated successfully"}
+                if req.contact_persons is not None:
+                    await conn.execute("DELETE FROM customer_contacts WHERE customer_id = $1", req.id)
+                    for idx, contact in enumerate(req.contact_persons[:3]):
+                        if contact.strip():
+                            await conn.execute(
+                                "INSERT INTO customer_contacts (customer_id, contact_person, is_primary) VALUES ($1, $2, $3)",
+                                req.id, contact, idx == 0
+                            )
+
+                if req.emails is not None:
+                    await conn.execute("DELETE FROM customer_emails WHERE customer_id = $1", req.id)
+                    for idx, email in enumerate(req.emails[:3]):
+                        if email.strip():
+                            await conn.execute(
+                                "INSERT INTO customer_emails (customer_id, email, is_primary) VALUES ($1, $2, $3)",
+                                req.id, email, idx == 0
+                            )
+
+                if req.phones is not None:
+                    await conn.execute("DELETE FROM customer_phones WHERE customer_id = $1", req.id)
+                    for idx, phone in enumerate(req.phones[:3]):
+                        if phone.strip():
+                            await conn.execute(
+                                "INSERT INTO customer_phones (customer_id, phone, is_primary) VALUES ($1, $2, $3)",
+                                req.id, phone, idx == 0
+                            )
+
+                if req.addresses is not None:
+                    await conn.execute("DELETE FROM customer_addresses WHERE customer_id = $1", req.id)
+                    for idx, addr in enumerate(req.addresses[:5]):
+                        if addr.address.strip():
+                            await conn.execute(
+                                "INSERT INTO customer_addresses (customer_id, address, city, state, pincode, is_primary) VALUES ($1, $2, $3, $4, $5, $6)",
+                                req.id, addr.address, addr.city, addr.state, addr.pincode, idx == 0
+                            )
+
+                return {"success": True, "message": "Customer updated successfully"}
 
     except UniqueViolationError:
         raise HTTPException(status_code=400, detail="Duplicate entry")
@@ -317,13 +380,11 @@ async def delete_customer(req: DeleteRequest):
     pool = await get_db_pool()
 
     try:
-        # Check if customer exists
         check_query = "SELECT id FROM customers WHERE id = $1"
         row = await pool.fetchrow(check_query, req.id)
         if not row:
             raise HTTPException(status_code=404, detail="Customer not found")
 
-        # Delete customer
         delete_query = "DELETE FROM customers WHERE id = $1"
         await pool.execute(delete_query, req.id)
 
@@ -331,3 +392,93 @@ async def delete_customer(req: DeleteRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+class SearchCompanyRequest(BaseModel):
+    query: str
+    limit: int = 10
+
+
+@customer_management_router.post("/search-companies")
+async def search_companies(req: SearchCompanyRequest):
+    pool = await get_db_pool()
+    
+    query = """
+        SELECT DISTINCT company_name
+        FROM customers
+        WHERE company_name ILIKE $1
+        ORDER BY company_name ASC
+        LIMIT $2
+    """
+    
+    rows = await pool.fetch(query, f"%{req.query}%", req.limit)
+    companies = [row["company_name"] for row in rows]
+    
+    return {"companies": companies}
+
+
+class GetByCompanyRequest(BaseModel):
+    company_name: str
+
+
+@customer_management_router.post("/get-by-company")
+async def get_by_company(req: GetByCompanyRequest):
+    pool = await get_db_pool()
+    
+    customer_query = """
+        SELECT id, company_name
+        FROM customers
+        WHERE company_name = $1 AND status = 'Active'
+        LIMIT 1
+    """
+    
+    customer_row = await pool.fetchrow(customer_query, req.company_name)
+    
+    if not customer_row:
+        return {
+            "company_name": req.company_name,
+            "contact_persons": [],
+            "emails": [],
+            "phones": [],
+            "addresses": []
+        }
+    
+    customer_id = customer_row["id"]
+    
+    contacts_query = "SELECT contact_person FROM customer_contacts WHERE customer_id = $1 ORDER BY is_primary DESC, contact_person ASC"
+    contact_rows = await pool.fetch(contacts_query, customer_id)
+    contact_persons = [row["contact_person"] for row in contact_rows]
+    
+    emails_query = "SELECT email FROM customer_emails WHERE customer_id = $1 ORDER BY is_primary DESC, email ASC"
+    email_rows = await pool.fetch(emails_query, customer_id)
+    emails = [row["email"] for row in email_rows]
+    
+    phones_query = "SELECT phone FROM customer_phones WHERE customer_id = $1 ORDER BY is_primary DESC, phone ASC"
+    phone_rows = await pool.fetch(phones_query, customer_id)
+    phones = [row["phone"] for row in phone_rows]
+    
+    addresses_query = """
+        SELECT address, city, state, pincode
+        FROM customer_addresses
+        WHERE customer_id = $1
+        ORDER BY is_primary DESC, address ASC
+    """
+    address_rows = await pool.fetch(addresses_query, customer_id)
+    addresses = []
+    for row in address_rows:
+        parts = [row["address"]]
+        if row["city"]:
+            parts.append(row["city"])
+        if row["state"]:
+            parts.append(row["state"])
+        if row["pincode"]:
+            parts.append(row["pincode"])
+        addresses.append(", ".join(parts))
+    
+    return {
+        "company_name": req.company_name,
+        "contact_persons": contact_persons,
+        "emails": emails,
+        "phones": phones,
+        "addresses": addresses
+    }

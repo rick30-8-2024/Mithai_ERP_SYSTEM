@@ -1111,16 +1111,20 @@ export const userManagementApi = {
 
 /* Customer Management types */
 
-export interface CustomerManagement {
-  id: string;
-  companyName: string;
-  contactPerson: string;
-  email?: string;
-  phone?: string;
-  address?: string;
+export interface CustomerAddress {
+  address: string;
   city?: string;
   state?: string;
   pincode?: string;
+}
+
+export interface CustomerManagement {
+  id: string;
+  companyName: string;
+  contactPersons: string[];
+  emails: string[];
+  phones: string[];
+  addresses: CustomerAddress[];
   gstin?: string;
   customerType: 'Regular' | 'Premium' | 'Wholesale' | 'Retail';
   status: 'Active' | 'Inactive' | 'Blocked';
@@ -1152,13 +1156,10 @@ export interface CustomerManagementListRequest {
 
 export interface CustomerManagementCreateRequest {
   company_name: string;
-  contact_person: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
+  contact_persons: string[];
+  emails: string[];
+  phones: string[];
+  addresses: CustomerAddress[];
   gstin?: string;
   customer_type?: 'Regular' | 'Premium' | 'Wholesale' | 'Retail';
   status?: 'Active' | 'Inactive' | 'Blocked';
@@ -1173,13 +1174,10 @@ export interface CustomerManagementCreateRequest {
 export interface CustomerManagementUpdateRequest {
   id: string;
   company_name?: string;
-  contact_person?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
+  contact_persons?: string[];
+  emails?: string[];
+  phones?: string[];
+  addresses?: CustomerAddress[];
   gstin?: string;
   customer_type?: 'Regular' | 'Premium' | 'Wholesale' | 'Retail';
   status?: 'Active' | 'Inactive' | 'Blocked';
@@ -1222,12 +1220,33 @@ async function deleteCustomerManagement(id: string) {
   return post<{ success: boolean; message: string }>("/api/customer-management/delete", { id });
 }
 
+async function searchCompanies(query: string, limit: number = 10) {
+  return post<{ companies: string[] }>("/api/customer-management/search-companies", {
+    query,
+    limit,
+  });
+}
+
+async function getCustomersByCompany(companyName: string) {
+  return post<{
+    company_name: string;
+    contact_persons: string[];
+    emails: string[];
+    phones: string[];
+    addresses: string[];
+  }>("/api/customer-management/get-by-company", {
+    company_name: companyName,
+  });
+}
+
 export const customerManagementApi = {
   list: listCustomerManagement,
   get: getCustomerManagement,
   create: createCustomerManagement,
   update: updateCustomerManagement,
   delete: deleteCustomerManagement,
+  searchCompanies: searchCompanies,
+  getByCompany: getCustomersByCompany,
 };
 
 /* Dispatch types */
@@ -1462,6 +1481,22 @@ async function getWorkOrdersForDispatch() {
   return data as WorkOrdersForDispatchResponse;
 }
 
+export interface ScheduleDispatchRequest {
+  order_id: number;
+  scheduled_date: string;
+  estimated_delivery_date: string;
+  delivery_type: 'Standard' | 'Express' | 'Same Day' | 'Scheduled';
+  vehicle_number?: string;
+  driver_name?: string;
+  driver_contact?: string;
+  special_instructions?: string;
+  created_by: string;
+}
+
+async function scheduleDispatch(data: ScheduleDispatchRequest) {
+  return post<{ success: boolean; message: string; order_id: number }>(`/api/dispatch-orders/${data.order_id}/schedule`, data);
+}
+
 async function holdDispatchOrder(id: number, data: {
   reason: string;
   held_by: string
@@ -1522,6 +1557,7 @@ export const dispatchApi = {
   getOrder: getDispatchOrder,
   getFinishedGoods: getFinishedGoods,
   getWorkOrders: getWorkOrdersForDispatch,
+  scheduleDispatch: scheduleDispatch,
   holdOrder: holdDispatchOrder,
   resumeOrder: resumeDispatchOrder,
   completeDispatch: completeDispatch,
