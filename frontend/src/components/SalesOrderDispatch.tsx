@@ -300,11 +300,6 @@ export default function SalesOrderDispatch() {
     setScheduleStep('details');
   };
 
-  const handleSelectOrderForDispatch = (order: DispatchOrder) => {
-    setShowScheduleDialog(false);
-    handleCompleteDispatch(order);
-  };
-
   const confirmScheduleDispatch = async () => {
     if (!selectedOrderForSchedule) {
       alert('Please select an order to schedule');

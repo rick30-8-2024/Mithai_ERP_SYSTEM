@@ -165,7 +165,6 @@ export default function SalesOrderComponent() {
   
   const [companySearchResults, setCompanySearchResults] = useState<string[]>([]);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
-  const [searchingCompany, setSearchingCompany] = useState(false);
   const [customerData, setCustomerData] = useState<{
     contactPersons: string[];
     emails: string[];
@@ -177,10 +176,6 @@ export default function SalesOrderComponent() {
     phones: [],
     addresses: [],
   });
-  const [showContactDropdown, setShowContactDropdown] = useState(false);
-  const [showEmailDropdown, setShowEmailDropdown] = useState(false);
-  const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
-  const [showAddressDropdown, setShowAddressDropdown] = useState(false);
   
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
@@ -338,14 +333,11 @@ export default function SalesOrderComponent() {
     }
 
     try {
-      setSearchingCompany(true);
       const response = await customerManagementApi.searchCompanies(query, 10);
       setCompanySearchResults(response.companies);
       setShowCompanyDropdown(true);
     } catch (error) {
       console.error('Failed to search companies:', error);
-    } finally {
-      setSearchingCompany(false);
     }
   };
 
