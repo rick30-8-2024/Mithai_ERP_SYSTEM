@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from database.db_pool import get_db_pool
 from decimal import Decimal
 from datetime import date, datetime, timedelta
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 dispatch_router = APIRouter(prefix="/api", tags=["dispatch"])
 
@@ -56,6 +60,7 @@ def _row_to_dispatch_item(row) -> dict:
     return {
         "id": str(row["id"]),
         "name": row["name"],
+        "sku": row.get("sku"),
         "quantity": _to_float(row["quantity"]),
         "unit": row["unit"],
         "weight": _to_float(row["weight"]),
@@ -356,15 +361,15 @@ class SkuAssignment(BaseModel):
 
 
 class InventoryAssignment(BaseModel):
-    item_id: int
+    item_id: str
     sku_assignments: List[SkuAssignment]
 
 
 class LogisticsAllocation(BaseModel):
     transport_service: str
     vehicle_number: str
-    driver_name: str
-    driver_contact: str
+    driver_name: Optional[str] = None
+    driver_contact: Optional[str] = None
     comments: Optional[str] = None
     item_allocations: Dict[str, float]
 
@@ -377,6 +382,13 @@ class CompleteDispatchRequest(BaseModel):
 
 @dispatch_router.post("/dispatch-orders/{order_id}/complete-dispatch")
 async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
+    logger.info(f"=== Complete Dispatch Request ===")
+    logger.info(f"Order ID: {order_id}")
+    logger.info(f"Request body: {req}")
+    logger.info(f"Inventory assignments: {req.inventory_assignments}")
+    logger.info(f"Logistics: {req.logistics}")
+    logger.info(f"Created by: {req.created_by}")
+    
     pool = await get_db_pool()
 
     try:
@@ -405,13 +417,17 @@ async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
                 for inv_assign in req.inventory_assignments:
                     for sku_assign in inv_assign.sku_assignments:
                         if sku_assign.sku not in sku_stock_map:
-                            stock_query = "SELECT current_stock FROM finished_goods WHERE sku = $1 FOR UPDATE"
+                            logger.info(f"Looking up SKU: {sku_assign.sku}")
+                            stock_query = "SELECT current_stock FROM inventory WHERE sku = $1 FOR UPDATE"
                             stock_row = await conn.fetchrow(stock_query, sku_assign.sku)
+                            
                             if not stock_row:
+                                logger.warning(f"SKU {sku_assign.sku} not found in inventory table")
                                 raise HTTPException(
                                     status_code=400,
                                     detail=f"SKU {sku_assign.sku} not found in inventory"
                                 )
+                            logger.info(f"Found SKU {sku_assign.sku} in inventory with stock: {stock_row['current_stock']}")
                             sku_stock_map[sku_assign.sku] = float(stock_row["current_stock"])
 
                 for inv_assign in req.inventory_assignments:
@@ -430,11 +446,10 @@ async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
 
                 for logistics in req.logistics:
                     for item_id_str, alloc_qty in logistics.item_allocations.items():
-                        item_id = int(item_id_str)
-                        if alloc_qty > item_assigned_totals.get(item_id, 0):
+                        if alloc_qty > item_assigned_totals.get(item_id_str, 0):
                             raise HTTPException(
                                 status_code=400,
-                                detail=f"Logistics allocation ({alloc_qty}) exceeds assigned quantity ({item_assigned_totals.get(item_id, 0)}) for item {item_id}"
+                                detail=f"Logistics allocation ({alloc_qty}) exceeds assigned quantity ({item_assigned_totals.get(item_id_str, 0)}) for item {item_id_str}"
                             )
 
                 order_number = order["order_number"]
@@ -458,23 +473,25 @@ async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
                 )
                 dispatch_record_id = dispatch_row["id"]
 
+                dispatch_item_id_map = {}
                 for item in items:
-                    item_id = item["id"]
+                    item_id = str(item["id"])
                     if item_id in item_assigned_totals:
                         dispatch_item_insert = """
                             INSERT INTO dispatch_items (
-                                dispatch_record_id, sales_order_item_id, item_name, quantity_dispatched
+                                dispatch_id, item_name, quantity_dispatched, unit
                             ) VALUES ($1, $2, $3, $4)
                             RETURNING id
                         """
                         dispatch_item_row = await conn.fetchrow(
                             dispatch_item_insert,
                             dispatch_record_id,
-                            item_id,
                             item["name"],
-                            item_assigned_totals[item_id]
+                            item_assigned_totals[item_id],
+                            item.get("unit", "kg")
                         )
                         dispatch_item_id = dispatch_item_row["id"]
+                        dispatch_item_id_map[item_id] = dispatch_item_id
 
                         if item_id in item_assignments:
                             for sku_assign in item_assignments[item_id]:
@@ -493,7 +510,7 @@ async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
                 for logistics in req.logistics:
                     logistics_insert = """
                         INSERT INTO dispatch_logistics (
-                            dispatch_record_id, transport_service, vehicle_number,
+                            dispatch_id, transport_service, vehicle_number,
                             driver_name, driver_contact, comments
                         ) VALUES ($1, $2, $3, $4, $5, $6)
                         RETURNING id
@@ -510,49 +527,34 @@ async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
                     logistics_id = logistics_row["id"]
 
                     for item_id_str, alloc_qty in logistics.item_allocations.items():
-                        item_id = int(item_id_str)
-                        allocation_insert = """
-                            INSERT INTO dispatch_logistics_allocations (
-                                dispatch_logistics_id, sales_order_item_id, quantity_allocated
-                            ) VALUES ($1, $2, $3)
-                        """
-                        await conn.execute(
-                            allocation_insert,
-                            logistics_id,
-                            item_id,
-                            alloc_qty
-                        )
+                        dispatch_item_id = dispatch_item_id_map.get(item_id_str)
+                        if dispatch_item_id and alloc_qty > 0:
+                            allocation_insert = """
+                                INSERT INTO dispatch_logistics_allocations (
+                                    logistics_id, dispatch_item_id, quantity_allocated
+                                ) VALUES ($1, $2, $3)
+                            """
+                            await conn.execute(
+                                allocation_insert,
+                                logistics_id,
+                                dispatch_item_id,
+                                alloc_qty
+                            )
 
                 for inv_assign in req.inventory_assignments:
                     for sku_assign in inv_assign.sku_assignments:
                         deduct_stock_query = """
-                            UPDATE finished_goods
+                            UPDATE inventory
                             SET current_stock = current_stock - $1,
                                 last_updated = NOW()
                             WHERE sku = $2
                             RETURNING current_stock
                         """
-                        updated_stock_row = await conn.fetchrow(
+                        await conn.fetchrow(
                             deduct_stock_query,
                             sku_assign.quantity,
                             sku_assign.sku
                         )
-                        
-                        new_stock = float(updated_stock_row["current_stock"])
-                        
-                        if new_stock == 0:
-                            new_status = 'Out of Stock'
-                        elif new_stock < 50:
-                            new_status = 'Low Stock'
-                        else:
-                            new_status = 'In Stock'
-                        
-                        update_status_query = """
-                            UPDATE finished_goods
-                            SET status = $1
-                            WHERE sku = $2
-                        """
-                        await conn.execute(update_status_query, new_status, sku_assign.sku)
 
                 for item_id, qty_dispatched in item_assigned_totals.items():
                     update_item_query = """

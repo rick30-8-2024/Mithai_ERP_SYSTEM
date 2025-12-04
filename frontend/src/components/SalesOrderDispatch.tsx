@@ -107,7 +107,7 @@ function Modal({ open, title, onClose, children, width = 800 }: ModalProps) {
             <X width={20} height={20} />
           </button>
         </div>
-        <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>{children}</div>
+        <div style={{ padding: 16, overflowY: "auto", overflowX: "hidden", flex: 1 }}>{children}</div>
       </div>
     </div>
   );
@@ -396,7 +396,7 @@ export default function SalesOrderDispatch() {
           itemId: item.id,
           skuAssignments: [{
             id: `${item.id}-0`,
-            sku: '',
+            sku: item.sku || 'N/A',
             quantity: 0
           }]
         };
@@ -423,50 +423,19 @@ export default function SalesOrderDispatch() {
     setShowDispatchDialog(true);
   };
 
-  const addSkuAssignment = (itemId: string) => {
+  const updateItemQuantity = (itemId: string, quantity: number) => {
     setItemInventories(prev => {
-      const currentAssignments = prev[itemId]?.skuAssignments || [];
-      const newId = `${itemId}-${currentAssignments.length}`;
-      return {
-        ...prev,
-        [itemId]: {
-          itemId,
-          skuAssignments: [
-            ...currentAssignments,
-            { id: newId, sku: '', quantity: 0 }
-          ]
-        }
-      };
-    });
-  };
-
-  const removeSkuAssignment = (itemId: string, assignmentId: string) => {
-    setItemInventories(prev => {
-      const currentAssignments = prev[itemId]?.skuAssignments || [];
-      if (currentAssignments.length <= 1) return prev;
+      const currentInventory = prev[itemId];
+      if (!currentInventory) return prev;
       
       return {
         ...prev,
         [itemId]: {
-          itemId,
-          skuAssignments: currentAssignments.filter(sa => sa.id !== assignmentId)
-        }
-      };
-    });
-  };
-
-  const updateSkuAssignment = (itemId: string, assignmentId: string, field: 'sku' | 'quantity', value: string | number) => {
-    setItemInventories(prev => {
-      const currentAssignments = prev[itemId]?.skuAssignments || [];
-      return {
-        ...prev,
-        [itemId]: {
-          itemId,
-          skuAssignments: currentAssignments.map(sa => 
-            sa.id === assignmentId 
-              ? { ...sa, [field]: value }
-              : sa
-          )
+          ...currentInventory,
+          skuAssignments: currentInventory.skuAssignments.map(sa => ({
+            ...sa,
+            quantity
+          }))
         }
       };
     });
@@ -544,24 +513,15 @@ export default function SalesOrderDispatch() {
       if (remainingToDispatch <= 0) continue;
       
       const totalAssigned = getTotalAssignedQuantity(item.id);
-      const assignments = itemInventories[item.id]?.skuAssignments || [];
+      const inventory = itemInventories[item.id];
+      
+      if (!inventory || !inventory.skuAssignments[0]?.sku) return false;
       
       if (totalAssigned > remainingToDispatch) return false;
       
-      const validAssignments = assignments.filter(sa => 
-        sa.sku && sa.quantity > 0
-      );
-      
-      if (validAssignments.length > 0) {
+      if (totalAssigned > 0) {
         hasAtLeastOneAssignment = true;
       }
-      
-      const hasInvalidAssignments = assignments.some(sa => 
-        (sa.sku && !sa.quantity) || 
-        (!sa.sku && sa.quantity > 0)
-      );
-      
-      if (hasInvalidAssignments) return false;
     }
     
     return hasAtLeastOneAssignment;
@@ -612,7 +572,7 @@ export default function SalesOrderDispatch() {
       const username = localStorage.getItem('ERP_USERNAME') || 'User';
       
       const inventory_assignments = Object.entries(itemInventories).map(([itemId, inventory]) => ({
-        item_id: parseInt(itemId),
+        item_id: itemId,
         sku_assignments: inventory.skuAssignments
           .filter(sa => sa.sku && sa.quantity > 0)
           .map(sa => ({
@@ -630,11 +590,10 @@ export default function SalesOrderDispatch() {
         item_allocations: Object.fromEntries(
           Object.entries(entry.itemAllocations)
             .filter(([_, qty]) => qty > 0)
-            .map(([id, qty]) => [parseInt(id), qty])
         )
       }));
 
-      const response = await dispatchApi.completeDispatch(parseInt(selectedOrder.id), {
+      const response = await dispatchApi.completeDispatch(selectedOrder.id, {
         inventory_assignments,
         logistics,
         created_by: username
@@ -974,11 +933,18 @@ export default function SalesOrderDispatch() {
                   <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginBottom: 6 }}>Items for Dispatch:</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {order.items.map(item => (
-                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span>{item.name}</span>
-                        <span style={{ color: 'var(--fg-muted)' }}>
-                          {item.quantity} {item.unit} ({item.weight} {item.weightUnit})
-                        </span>
+                      <div key={item.id} style={{ fontSize: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                          <span style={{ fontWeight: 600 }}>{item.name}</span>
+                          <span style={{ color: 'var(--fg-muted)' }}>
+                            {item.quantity} {item.unit} ({item.weight} {item.weightUnit})
+                          </span>
+                        </div>
+                        {item.sku && (
+                          <div style={{ fontSize: 11, color: 'var(--fg-muted)', paddingLeft: 4 }}>
+                            SKU: {item.sku}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1747,9 +1713,9 @@ export default function SalesOrderDispatch() {
             </div>
 
             {currentTab === 'inventory' && (
-              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div>
                 <div style={{ marginBottom: 16, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 13 }}>
-                  Assign inventory SKUs to each order item. You can add multiple SKU assignments per item.
+                  Enter the quantity to dispatch for each item. The SKU is automatically assigned based on the product.
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1759,10 +1725,14 @@ export default function SalesOrderDispatch() {
                     if (remainingQty <= 0) return null;
 
                     const totalAssigned = getTotalAssignedQuantity(item.id);
-                    const assignments = itemInventories[item.id]?.skuAssignments || [];
+                    const inventory = itemInventories[item.id];
+                    const sku = inventory?.skuAssignments[0]?.sku || 'N/A';
+                    const quantity = inventory?.skuAssignments[0]?.quantity || 0;
+                    
+                    const matchingFG = finishedGoods.find(fg => fg.sku === sku);
 
                     return (
-                      <div 
+                      <div
                         key={item.id}
                         style={{
                           border: '1px solid var(--border)',
@@ -1772,13 +1742,34 @@ export default function SalesOrderDispatch() {
                         }}
                       >
                         <div style={{ marginBottom: 12 }}>
-                          <div style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</div>
-                          <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>
-                            Ordered: {item.quantity} {item.unit} | Dispatched: {alreadyDispatched} | Remaining: {remainingQty}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</div>
+                              <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>
+                                Ordered: {item.quantity} {item.unit} | Dispatched: {alreadyDispatched} | Remaining: {remainingQty}
+                              </div>
+                            </div>
+                            <div style={{
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              background: '#e3f2fd',
+                              color: '#1565c0',
+                              whiteSpace: 'nowrap',
+                              marginLeft: 12
+                            }}>
+                              SKU: {sku}
+                            </div>
                           </div>
-                          <div style={{ 
-                            fontSize: 13, 
-                            fontWeight: 600, 
+                          {matchingFG && (
+                            <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 4 }}>
+                              Available in Finished Goods: {matchingFG.currentStock} {matchingFG.unit}
+                            </div>
+                          )}
+                          <div style={{
+                            fontSize: 13,
+                            fontWeight: 600,
                             marginTop: 4,
                             color: totalAssigned === remainingQty ? '#2e7d32' : totalAssigned > remainingQty ? '#c62828' : '#f57f17'
                           }}>
@@ -1786,91 +1777,30 @@ export default function SalesOrderDispatch() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                          {assignments.map((assignment, index) => (
-                            <div key={assignment.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <div style={{ flex: 1 }}>
-                                <select
-                                  value={assignment.sku}
-                                  onChange={(e) => updateSkuAssignment(item.id, assignment.id, 'sku', e.target.value)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 12px',
-                                    border: '1.5px solid var(--border)',
-                                    borderRadius: 8,
-                                    fontSize: 13,
-                                    background: 'var(--panel)'
-                                  }}
-                                >
-                                  <option value="">Select SKU</option>
-                                  {finishedGoods
-                                    .filter(fg => 
-                                      fg.name.toLowerCase().includes(item.name.toLowerCase()) ||
-                                      item.name.toLowerCase().includes(fg.name.toLowerCase())
-                                    )
-                                    .map(fg => (
-                                      <option key={fg.sku} value={fg.sku}>
-                                        {fg.sku} - {fg.name} (Available: {fg.currentStock})
-                                      </option>
-                                    ))
-                                  }
-                                </select>
-                              </div>
-                              <div style={{ width: 150 }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={assignment.quantity || ''}
-                                  onChange={(e) => updateSkuAssignment(item.id, assignment.id, 'quantity', parseInt(e.target.value) || 0)}
-                                  placeholder="Quantity"
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 12px',
-                                    border: '1.5px solid var(--border)',
-                                    borderRadius: 8,
-                                    fontSize: 13
-                                  }}
-                                />
-                              </div>
-                              {assignments.length > 1 && (
-                                <button
-                                  onClick={() => removeSkuAssignment(item.id, assignment.id)}
-                                  style={{
-                                    padding: 8,
-                                    border: '1.5px solid #c62828',
-                                    borderRadius: 8,
-                                    background: 'transparent',
-                                    color: '#c62828',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  <Trash2 width={16} height={16} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <label style={{ fontSize: 13, fontWeight: 600, minWidth: 80 }}>
+                            Quantity:
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={remainingQty}
+                            value={quantity || ''}
+                            onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 0)}
+                            placeholder="Enter quantity"
+                            style={{
+                              flex: 1,
+                              padding: '10px 12px',
+                              border: '1.5px solid var(--border)',
+                              borderRadius: 8,
+                              fontSize: 14,
+                              fontWeight: 600
+                            }}
+                          />
+                          <span style={{ fontSize: 13, color: 'var(--fg-muted)', minWidth: 60 }}>
+                            {item.unit}
+                          </span>
                         </div>
-
-                        <button
-                          onClick={() => addSkuAssignment(item.id)}
-                          style={{
-                            marginTop: 12,
-                            padding: '6px 12px',
-                            border: '1.5px solid #00695c',
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            background: 'transparent',
-                            color: '#00695c',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4
-                          }}
-                        >
-                          <Plus width={14} height={14} />
-                          Add SKU Assignment
-                        </button>
                       </div>
                     );
                   })}
@@ -1879,14 +1809,14 @@ export default function SalesOrderDispatch() {
             )}
 
             {currentTab === 'logistics' && (
-              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div>
                 <div style={{ marginBottom: 16, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 13 }}>
                   Configure logistics details for dispatching this order. You can add multiple vehicles.
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
                   {logisticsEntries.map((entry, entryIndex) => (
-                    <div 
+                    <div
                       key={entry.id}
                       style={{
                         border: '1px solid var(--border)',
@@ -1916,28 +1846,51 @@ export default function SalesOrderDispatch() {
                         )}
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                            Transport Service *
-                          </label>
-                          <select
-                            value={entry.transportService}
-                            onChange={(e) => updateLogisticsEntry(entry.id, 'transportService', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              border: '1.5px solid var(--border)',
-                              borderRadius: 8,
-                              fontSize: 13,
-                              background: 'var(--panel)'
-                            }}
-                          >
-                            <option value="">Select Service</option>
-                            {transportServices.map(s => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                              Transport Service *
+                            </label>
+                            <select
+                              value={entry.transportService}
+                              onChange={(e) => updateLogisticsEntry(entry.id, 'transportService', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                border: '1.5px solid var(--border)',
+                                borderRadius: 8,
+                                fontSize: 13,
+                                background: 'var(--panel)',
+                                boxSizing: 'border-box'
+                              }}
+                            >
+                              <option value="">Select Service</option>
+                              {transportServices.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                              Vehicle Number *
+                            </label>
+                            <input
+                              type="text"
+                              value={entry.vehicleNumber}
+                              onChange={(e) => updateLogisticsEntry(entry.id, 'vehicleNumber', e.target.value)}
+                              placeholder="e.g., MH-12-AB-1234"
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                border: '1.5px solid var(--border)',
+                                borderRadius: 8,
+                                fontSize: 13,
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                          </div>
                         </div>
 
                         {entry.transportService === 'Other' && (
@@ -1955,67 +1908,53 @@ export default function SalesOrderDispatch() {
                                 padding: '8px 12px',
                                 border: '1.5px solid var(--border)',
                                 borderRadius: 8,
-                                fontSize: 13
+                                fontSize: 13,
+                                boxSizing: 'border-box'
                               }}
                             />
                           </div>
                         )}
 
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                            Vehicle Number *
-                          </label>
-                          <input
-                            type="text"
-                            value={entry.vehicleNumber}
-                            onChange={(e) => updateLogisticsEntry(entry.id, 'vehicleNumber', e.target.value)}
-                            placeholder="e.g., MH-12-AB-1234"
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              border: '1.5px solid var(--border)',
-                              borderRadius: 8,
-                              fontSize: 13
-                            }}
-                          />
-                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                              Driver Name
+                            </label>
+                            <input
+                              type="text"
+                              value={entry.driverName}
+                              onChange={(e) => updateLogisticsEntry(entry.id, 'driverName', e.target.value)}
+                              placeholder="Driver name"
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                border: '1.5px solid var(--border)',
+                                borderRadius: 8,
+                                fontSize: 13,
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                          </div>
 
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                            Driver Name
-                          </label>
-                          <input
-                            type="text"
-                            value={entry.driverName}
-                            onChange={(e) => updateLogisticsEntry(entry.id, 'driverName', e.target.value)}
-                            placeholder="Driver name"
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              border: '1.5px solid var(--border)',
-                              borderRadius: 8,
-                              fontSize: 13
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                            Driver Contact
-                          </label>
-                          <input
-                            type="text"
-                            value={entry.driverContact}
-                            onChange={(e) => updateLogisticsEntry(entry.id, 'driverContact', e.target.value)}
-                            placeholder="Contact number"
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              border: '1.5px solid var(--border)',
-                              borderRadius: 8,
-                              fontSize: 13
-                            }}
-                          />
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                              Driver Contact
+                            </label>
+                            <input
+                              type="text"
+                              value={entry.driverContact}
+                              onChange={(e) => updateLogisticsEntry(entry.id, 'driverContact', e.target.value)}
+                              placeholder="Contact number"
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                border: '1.5px solid var(--border)',
+                                borderRadius: 8,
+                                fontSize: 13,
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
 
@@ -2029,7 +1968,7 @@ export default function SalesOrderDispatch() {
                             const currentAllocation = entry.itemAllocations[item.id] || 0;
                             
                             return (
-                              <div 
+                              <div
                                 key={item.id}
                                 style={{
                                   display: 'flex',
@@ -2037,10 +1976,11 @@ export default function SalesOrderDispatch() {
                                   alignItems: 'center',
                                   padding: 8,
                                   background: 'var(--panel)',
-                                  borderRadius: 6
+                                  borderRadius: 6,
+                                  gap: 12
                                 }}
                               >
-                                <div style={{ flex: 1, fontSize: 13 }}>
+                                <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
                                   <div style={{ fontWeight: 600 }}>{item.name}</div>
                                   <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
                                     Assigned: {totalAssigned}
@@ -2055,11 +1995,13 @@ export default function SalesOrderDispatch() {
                                   placeholder="0"
                                   style={{
                                     width: 80,
+                                    flexShrink: 0,
                                     padding: '6px 10px',
                                     border: '1.5px solid var(--border)',
                                     borderRadius: 6,
                                     fontSize: 13,
-                                    textAlign: 'right'
+                                    textAlign: 'right',
+                                    boxSizing: 'border-box'
                                   }}
                                 />
                               </div>
@@ -2084,7 +2026,8 @@ export default function SalesOrderDispatch() {
                             borderRadius: 8,
                             fontSize: 13,
                             fontFamily: 'inherit',
-                            resize: 'vertical'
+                            resize: 'vertical',
+                            boxSizing: 'border-box'
                           }}
                         />
                       </div>

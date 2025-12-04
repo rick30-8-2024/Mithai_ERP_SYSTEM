@@ -26,6 +26,7 @@ function CustomerManagementComponent() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerManagement | null>(null);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     company_name: '',
@@ -67,7 +68,11 @@ function CustomerManagementComponent() {
   };
 
   const handleCreateCustomer = async () => {
+    if (isSubmitting) return;
+    
     try {
+      setIsSubmitting(true);
+      setError('');
       const payload = {
         company_name: formData.company_name,
         contact_persons: formData.contact_persons.filter(c => c.trim()),
@@ -92,12 +97,17 @@ function CustomerManagementComponent() {
     } catch (err) {
       console.error('Frontend: Error creating customer:', err);
       setError(err instanceof Error ? err.message : 'Failed to create customer');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleUpdateCustomer = async () => {
-    if (!editingCustomer) return;
+    if (!editingCustomer || isSubmitting) return;
+    
     try {
+      setIsSubmitting(true);
+      setError('');
       await customerManagementApi.update({
         id: editingCustomer.id,
         ...formData,
@@ -108,6 +118,8 @@ function CustomerManagementComponent() {
       loadCustomers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update customer');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -977,18 +989,21 @@ function CustomerManagementComponent() {
                 <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                   <button
                     onClick={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+                    disabled={isSubmitting}
                     className="btn"
                     style={{
                       flex: 1,
                       padding: '10px',
-                      background: 'var(--fg)',
+                      background: isSubmitting ? 'var(--muted)' : 'var(--fg)',
                       color: 'var(--bg)',
                       border: 'none',
                       borderRadius: '8px',
                       fontWeight: '600',
+                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                      opacity: isSubmitting ? 0.6 : 1,
                     }}
                   >
-                    {editingCustomer ? 'Update Customer' : 'Create Customer'}
+                    {isSubmitting ? 'Saving...' : (editingCustomer ? 'Update Customer' : 'Create Customer')}
                   </button>
                   <button
                     onClick={() => {

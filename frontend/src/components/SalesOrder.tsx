@@ -124,6 +124,7 @@ function Modal({ open, title, onClose, children, width = 800 }: ModalProps) {
 // Form item type
 interface FormItem {
   name: string;
+  sku?: string;
   quantity: number;
   unit: string;
   unit_price: number;
@@ -415,6 +416,7 @@ export default function SalesOrderComponent() {
     console.log('Selecting inventory item:', {
       index,
       name: item.name,
+      sku: item.sku,
       unit: item.unit,
       cost_per_unit: item.cost_per_unit,
       currentItem: formItems[index]
@@ -424,6 +426,7 @@ export default function SalesOrderComponent() {
     updatedItems[index] = {
       ...updatedItems[index],
       name: item.name,
+      sku: item.sku,
       unit: item.unit,
       unit_price: item.cost_per_unit,
     };

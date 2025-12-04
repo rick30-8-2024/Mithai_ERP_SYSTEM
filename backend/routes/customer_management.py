@@ -126,7 +126,7 @@ class DeleteRequest(BaseModel):
 async def list_customers(req: ListRequest):
     pool = await get_db_pool()
     
-    query = """
+    base_query = """
         SELECT * FROM customers
         WHERE 1=1
     """
@@ -134,7 +134,7 @@ async def list_customers(req: ListRequest):
     param_count = 1
 
     if req.query:
-        query += f"""
+        base_query += f"""
             AND (
                 company_name ILIKE ${param_count}
                 OR id IN (SELECT customer_id FROM customer_contacts WHERE contact_person ILIKE ${param_count})
@@ -146,31 +146,100 @@ async def list_customers(req: ListRequest):
         param_count += 1
 
     if req.customer_type:
-        query += f" AND customer_type = ${param_count}"
+        base_query += f" AND customer_type = ${param_count}"
         params.append(req.customer_type)
         param_count += 1
 
     if req.status:
-        query += f" AND status = ${param_count}"
+        base_query += f" AND status = ${param_count}"
         params.append(req.status)
         param_count += 1
 
     if req.city:
-        query += f" AND id IN (SELECT customer_id FROM customer_addresses WHERE city ILIKE ${param_count})"
+        base_query += f" AND id IN (SELECT customer_id FROM customer_addresses WHERE city ILIKE ${param_count})"
         params.append(f"%{req.city}%")
         param_count += 1
 
-    # Get total count
-    count_query = f"SELECT COUNT(*) as count FROM ({query}) as subq"
+    count_query = f"SELECT COUNT(*) as count FROM ({base_query}) as subq"
     count_row = await pool.fetchrow(count_query, *params)
     total = count_row["count"]
 
-    # Add ordering and pagination
-    query += f" ORDER BY company_name ASC LIMIT ${param_count} OFFSET ${param_count + 1}"
+    optimized_query = f"""
+        WITH customer_base AS (
+            {base_query}
+            ORDER BY company_name ASC
+            LIMIT ${param_count} OFFSET ${param_count + 1}
+        )
+        SELECT
+            c.*,
+            COALESCE(
+                array_agg(DISTINCT cc.contact_person ORDER BY cc.contact_person)
+                FILTER (WHERE cc.contact_person IS NOT NULL),
+                ARRAY[]::text[]
+            ) as contact_persons,
+            COALESCE(
+                array_agg(DISTINCT ce.email ORDER BY ce.email)
+                FILTER (WHERE ce.email IS NOT NULL),
+                ARRAY[]::text[]
+            ) as emails,
+            COALESCE(
+                array_agg(DISTINCT cp.phone ORDER BY cp.phone)
+                FILTER (WHERE cp.phone IS NOT NULL),
+                ARRAY[]::text[]
+            ) as phones,
+            COALESCE(
+                json_agg(
+                    json_build_object(
+                        'address', ca.address,
+                        'city', ca.city,
+                        'state', ca.state,
+                        'pincode', ca.pincode
+                    ) ORDER BY ca.is_primary DESC, ca.created_date ASC
+                ) FILTER (WHERE ca.address IS NOT NULL),
+                '[]'::json
+            ) as addresses
+        FROM customer_base c
+        LEFT JOIN customer_contacts cc ON c.id = cc.customer_id
+        LEFT JOIN customer_emails ce ON c.id = ce.customer_id
+        LEFT JOIN customer_phones cp ON c.id = cp.customer_id
+        LEFT JOIN customer_addresses ca ON c.id = ca.customer_id
+        GROUP BY c.id, c.company_name, c.gstin, c.customer_type, c.status,
+                 c.credit_limit, c.outstanding_balance, c.payment_terms, c.notes,
+                 c.created_by, c.created_date, c.last_updated, c.last_updated_by
+        ORDER BY c.company_name ASC
+    """
+    
     params.extend([req.limit, req.offset])
-
-    rows = await pool.fetch(query, *params)
-    customers = [await _row_to_customer(row, pool) for row in rows]
+    rows = await pool.fetch(optimized_query, *params)
+    
+    customers = []
+    for row in rows:
+        addresses_json = row["addresses"]
+        if isinstance(addresses_json, str):
+            import json
+            addresses = json.loads(addresses_json)
+        else:
+            addresses = addresses_json if addresses_json else []
+        
+        customers.append({
+            "id": str(row["id"]),
+            "companyName": row["company_name"],
+            "contactPersons": list(row["contact_persons"]) if row["contact_persons"] else [],
+            "emails": list(row["emails"]) if row["emails"] else [],
+            "phones": list(row["phones"]) if row["phones"] else [],
+            "addresses": addresses,
+            "gstin": row.get("gstin"),
+            "customerType": row["customer_type"],
+            "status": row["status"],
+            "creditLimit": _to_float(row.get("credit_limit")),
+            "outstandingBalance": _to_float(row.get("outstanding_balance")),
+            "paymentTerms": row.get("payment_terms"),
+            "notes": row.get("notes"),
+            "createdBy": row.get("created_by"),
+            "createdDate": row["created_date"].isoformat() if row.get("created_date") else None,
+            "lastUpdated": row["last_updated"].isoformat() if row.get("last_updated") else None,
+            "lastUpdatedBy": row.get("last_updated_by"),
+        })
 
     return {
         "items": customers,
@@ -425,16 +494,50 @@ class GetByCompanyRequest(BaseModel):
 async def get_by_company(req: GetByCompanyRequest):
     pool = await get_db_pool()
     
-    customer_query = """
-        SELECT id, company_name
-        FROM customers
-        WHERE company_name = $1 AND status = 'Active'
+    optimized_query = """
+        SELECT
+            c.company_name,
+            COALESCE(
+                array_agg(cc.contact_person ORDER BY cc.is_primary DESC, cc.contact_person ASC)
+                FILTER (WHERE cc.contact_person IS NOT NULL),
+                ARRAY[]::text[]
+            ) as contact_persons,
+            COALESCE(
+                array_agg(ce.email ORDER BY ce.is_primary DESC, ce.email ASC)
+                FILTER (WHERE ce.email IS NOT NULL),
+                ARRAY[]::text[]
+            ) as emails,
+            COALESCE(
+                array_agg(cp.phone ORDER BY cp.is_primary DESC, cp.phone ASC)
+                FILTER (WHERE cp.phone IS NOT NULL),
+                ARRAY[]::text[]
+            ) as phones,
+            COALESCE(
+                array_agg(
+                    CONCAT_WS(', ',
+                        ca.address,
+                        NULLIF(ca.city, ''),
+                        NULLIF(ca.state, ''),
+                        NULLIF(ca.pincode, '')
+                    )
+                    ORDER BY ca.is_primary DESC, ca.address ASC
+                )
+                FILTER (WHERE ca.address IS NOT NULL),
+                ARRAY[]::text[]
+            ) as addresses
+        FROM customers c
+        LEFT JOIN customer_contacts cc ON c.id = cc.customer_id
+        LEFT JOIN customer_emails ce ON c.id = ce.customer_id
+        LEFT JOIN customer_phones cp ON c.id = cp.customer_id
+        LEFT JOIN customer_addresses ca ON c.id = ca.customer_id
+        WHERE c.company_name = $1 AND c.status = 'Active'
+        GROUP BY c.company_name
         LIMIT 1
     """
     
-    customer_row = await pool.fetchrow(customer_query, req.company_name)
+    row = await pool.fetchrow(optimized_query, req.company_name)
     
-    if not customer_row:
+    if not row:
         return {
             "company_name": req.company_name,
             "contact_persons": [],
@@ -443,42 +546,10 @@ async def get_by_company(req: GetByCompanyRequest):
             "addresses": []
         }
     
-    customer_id = customer_row["id"]
-    
-    contacts_query = "SELECT contact_person FROM customer_contacts WHERE customer_id = $1 ORDER BY is_primary DESC, contact_person ASC"
-    contact_rows = await pool.fetch(contacts_query, customer_id)
-    contact_persons = [row["contact_person"] for row in contact_rows]
-    
-    emails_query = "SELECT email FROM customer_emails WHERE customer_id = $1 ORDER BY is_primary DESC, email ASC"
-    email_rows = await pool.fetch(emails_query, customer_id)
-    emails = [row["email"] for row in email_rows]
-    
-    phones_query = "SELECT phone FROM customer_phones WHERE customer_id = $1 ORDER BY is_primary DESC, phone ASC"
-    phone_rows = await pool.fetch(phones_query, customer_id)
-    phones = [row["phone"] for row in phone_rows]
-    
-    addresses_query = """
-        SELECT address, city, state, pincode
-        FROM customer_addresses
-        WHERE customer_id = $1
-        ORDER BY is_primary DESC, address ASC
-    """
-    address_rows = await pool.fetch(addresses_query, customer_id)
-    addresses = []
-    for row in address_rows:
-        parts = [row["address"]]
-        if row["city"]:
-            parts.append(row["city"])
-        if row["state"]:
-            parts.append(row["state"])
-        if row["pincode"]:
-            parts.append(row["pincode"])
-        addresses.append(", ".join(parts))
-    
     return {
-        "company_name": req.company_name,
-        "contact_persons": contact_persons,
-        "emails": emails,
-        "phones": phones,
-        "addresses": addresses
+        "company_name": row["company_name"],
+        "contact_persons": list(row["contact_persons"]) if row["contact_persons"] else [],
+        "emails": list(row["emails"]) if row["emails"] else [],
+        "phones": list(row["phones"]) if row["phones"] else [],
+        "addresses": list(row["addresses"]) if row["addresses"] else []
     }

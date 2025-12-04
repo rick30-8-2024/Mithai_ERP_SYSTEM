@@ -77,6 +77,17 @@ CREATE TABLE IF NOT EXISTS inventory (
 CREATE INDEX IF NOT EXISTS idx_inventory_sku ON inventory(sku);
 CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category);
 CREATE INDEX IF NOT EXISTS idx_inventory_name ON inventory(name);
+CREATE INDEX IF NOT EXISTS idx_inventory_factory ON inventory(factory);
+
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS status TEXT GENERATED ALWAYS AS (
+    CASE
+        WHEN current_stock <= 0 THEN 'Out of Stock'
+        WHEN current_stock < min_stock THEN 'Low Stock'
+        ELSE 'In Stock'
+    END
+) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory(status);
 
 -- ============================================
 -- RECIPE MANAGEMENT TABLES
@@ -362,6 +373,7 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sales_order_id UUID NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    sku TEXT,
     quantity NUMERIC NOT NULL,
     unit TEXT NOT NULL,
     weight NUMERIC,
@@ -372,6 +384,7 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sales_order_items_sales_order_id ON sales_order_items(sales_order_id);
+CREATE INDEX IF NOT EXISTS idx_sales_order_items_sku ON sales_order_items(sku);
 
 -- ============================================
 -- CUSTOMERS TABLE

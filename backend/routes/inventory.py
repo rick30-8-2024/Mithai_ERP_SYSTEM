@@ -125,27 +125,42 @@ async def list_inventory(payload: ListRequest):
         status = payload.status or None
         pool = await get_db_pool()
         async with pool.acquire() as conn:
+            total_count_query = """
+            SELECT COUNT(*) FROM inventory
+            WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2)
+              AND ($3::text IS NULL OR category = $3)
+              AND ($4::text IS NULL OR status = $4)
+              AND ($5::text IS NULL OR factory = $5)
+            """
+            
+            total_count = await conn.fetchval(
+                total_count_query,
+                q, pattern, payload.category, status, payload.factory
+            )
+            
             rows = await conn.fetch(
                 """
                 SELECT id, name, sku, category, unit, current_stock, min_stock, max_stock, cost_per_unit, last_updated, last_updated_by,
-                       brand, grade, packing_weight, supplier, category_type, packing_qty, factory
+                       brand, grade, packing_weight, supplier, category_type, packing_qty, factory, status
                 FROM inventory
                 WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2)
                   AND ($3::text IS NULL OR category = $3)
-                  AND ($6::text IS NULL OR
-                       CASE
-                         WHEN current_stock <= 0 THEN 'Out of Stock'
-                         WHEN current_stock < min_stock THEN 'Low Stock'
-                         ELSE 'In Stock'
-                       END = $6)
-                  AND ($7::text IS NULL OR factory = $7)
+                  AND ($4::text IS NULL OR status = $4)
+                  AND ($5::text IS NULL OR factory = $5)
                 ORDER BY name
-                LIMIT $4 OFFSET $5
+                LIMIT $6 OFFSET $7
                 """,
-                q, pattern, payload.category, payload.limit, payload.offset, status, payload.factory
+                q, pattern, payload.category, status, payload.factory, payload.limit, payload.offset
             )
         items = [_row_to_item(r) for r in rows]
-        return {"items": items, "count": len(items)}
+        return {
+            "items": items,
+            "count": len(items),
+            "total": total_count,
+            "limit": payload.limit,
+            "offset": payload.offset,
+            "hasMore": (payload.offset + len(items)) < total_count
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list inventory: {str(e)}")
 

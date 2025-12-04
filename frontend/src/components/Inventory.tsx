@@ -219,7 +219,7 @@ export default function Inventory() {
         category: category === "All" ? null : category,
         status: status === "All" ? null : status,
         factory: factory === "All" ? null : factory,
-        limit: 200,
+        limit: 50,
         offset: 0,
       });
       setItems(res.items);

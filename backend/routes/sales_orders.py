@@ -19,6 +19,7 @@ def _to_float(v) -> float:
 
 class SalesOrderItem(BaseModel):
     name: str
+    sku: Optional[str] = None
     quantity: float
     unit: str
     weight: float
@@ -61,6 +62,7 @@ def _row_to_so_item(row) -> dict:
     return {
         "id": str(row["id"]),
         "name": row["name"],
+        "sku": row.get("sku"),
         "quantity": _to_float(row["quantity"]),
         "unit": row["unit"],
         "weight": _to_float(row["weight"]),
@@ -296,15 +298,16 @@ async def create_sales_order(req: CreateRequest):
                 if req.items:
                     items_query = """
                         INSERT INTO sales_order_items (
-                            sales_order_id, name, quantity, unit, weight, weight_unit,
+                            sales_order_id, name, sku, quantity, unit, weight, weight_unit,
                             unit_price, total_price
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     """
                     for item in req.items:
                         await conn.execute(
                             items_query,
                             so_id,
                             item.name,
+                            item.sku,
                             item.quantity,
                             item.unit,
                             item.weight,
@@ -441,15 +444,16 @@ async def update_sales_order(req: UpdateRequest):
                     if req.items:
                         items_query = """
                             INSERT INTO sales_order_items (
-                                sales_order_id, name, quantity, unit, weight, weight_unit,
+                                sales_order_id, name, sku, quantity, unit, weight, weight_unit,
                                 unit_price, total_price
-                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                         """
                         for item in req.items:
                             await conn.execute(
                                 items_query,
                                 req.id,
                                 item.name,
+                                item.sku,
                                 item.quantity,
                                 item.unit,
                                 item.weight,

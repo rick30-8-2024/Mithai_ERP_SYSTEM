@@ -835,6 +835,7 @@ export const factoryTransfersApi = {
 export interface SalesOrderItem {
   id: string;
   name: string;
+  sku?: string;
   quantity: number;
   unit: string;
   weight: number;
@@ -912,6 +913,7 @@ export interface SalesOrderCreateRequest {
   last_updated_by?: string;
   items: Array<{
     name: string;
+    sku?: string;
     quantity: number;
     unit: string;
     weight: number;
@@ -945,6 +947,7 @@ export interface SalesOrderUpdateRequest {
   last_updated_by?: string;
   items?: Array<{
     name: string;
+    sku?: string;
     quantity: number;
     unit: string;
     weight: number;
@@ -1254,6 +1257,7 @@ export const customerManagementApi = {
 export interface DispatchOrderItem {
   id: string;
   name: string;
+  sku?: string;
   quantity: number;
   unit: string;
   weight: number;
@@ -1508,9 +1512,9 @@ async function resumeDispatchOrder(id: number) {
   return post<{ success: boolean; message: string }>(`/api/dispatch-orders/${id}/resume`, {});
 }
 
-async function completeDispatch(id: number, data: {
+async function completeDispatch(id: string, data: {
   inventory_assignments: Array<{
-    item_id: number;
+    item_id: string;
     sku_assignments: Array<{ sku: string; quantity: number }>;
   }>;
   logistics: Array<{
@@ -1519,7 +1523,7 @@ async function completeDispatch(id: number, data: {
     driver_name?: string;
     driver_contact?: string;
     comments?: string;
-    item_allocations: Record<number, number>;
+    item_allocations: Record<string, number>;
   }>;
   created_by: string;
 }) {
