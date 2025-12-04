@@ -659,24 +659,6 @@ function SendToFactory() {
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                       <h3 style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>{transfer.transferNumber}</h3>
-                      {transfer.status !== 'Draft' && (
-                        <span style={{
-                          ...statusStyle,
-                          background: statusStyle.bg,
-                          color: statusStyle.color,
-                          border: `1px solid ${statusStyle.border}`,
-                          padding: '4px 8px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}>
-                          {getTransferStatusIcon(transfer.status)}
-                          {transfer.status}
-                        </span>
-                      )}
                     </div>
                     {transfer.inventoryItem && (
                       <div style={{ 
@@ -966,22 +948,6 @@ function SendToFactory() {
                   <span style={{ color: 'var(--muted)' }}>Transfer Number:</span>
                   <span style={{ fontWeight: 700 }}>{selectedTransfer.transferNumber}</span>
                 </div>
-                {selectedTransfer.status !== 'Draft' && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Status:</span>
-                    <span style={{
-                      padding: '4px 8px',
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      background: getStatusColor(selectedTransfer.status).bg,
-                      color: getStatusColor(selectedTransfer.status).color,
-                      border: `1px solid ${getStatusColor(selectedTransfer.status).border}`,
-                    }}>
-                      {selectedTransfer.status}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 
