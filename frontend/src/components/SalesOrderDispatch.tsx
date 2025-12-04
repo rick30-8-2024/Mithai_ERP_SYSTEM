@@ -16,7 +16,6 @@ import {
   ChevronRight,
   Box,
   X,
-  Trash2,
   Receipt,
   Calendar,
 } from 'lucide-react';
