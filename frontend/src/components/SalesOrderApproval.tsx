@@ -79,14 +79,21 @@ export default function SalesOrderApproval() {
 
     try {
       const username = localStorage.getItem('ERP_USERNAME') || 'Admin';
-      const newStatus = actionType === 'approve' ? 'Confirmed' : 'Cancelled';
+      const newStatus = actionType === 'approve' ? 'Ready for Dispatch' : 'Cancelled';
       
-      await salesOrdersApi.update({
+      const updatePayload: any = {
         id: selectedOrder.id,
         status: newStatus,
         notes: comments ? `${selectedOrder.notes || ''}\n[${actionType === 'approve' ? 'Approved' : 'Rejected'}] by ${username}: ${comments}` : selectedOrder.notes,
         last_updated_by: username,
-      });
+      };
+
+      if (actionType === 'approve') {
+        updatePayload.payment_status = 'Paid';
+        updatePayload.paid_amount = selectedOrder.finalAmount;
+      }
+
+      await salesOrdersApi.update(updatePayload);
 
       alert(`Order ${actionType === 'approve' ? 'approved' : 'rejected'} successfully`);
       setShowApprovalModal(false);

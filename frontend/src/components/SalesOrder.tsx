@@ -968,40 +968,6 @@ export default function SalesOrderComponent() {
                         <span>Balance: ₹{(order.finalAmount - order.paidAmount).toLocaleString()}</span>
                       </div>
                     </div>
-                    {order.paymentStatus !== 'Paid' && (
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Mark this payment as complete?')) return;
-                          try {
-                            await salesOrdersApi.update({
-                              id: order.id,
-                              paid_amount: order.finalAmount,
-                              payment_status: 'Paid',
-                              last_updated_by: localStorage.getItem('ERP_USERNAME') || 'Admin',
-                            });
-                            alert('Payment marked as complete');
-                            loadOrders();
-                          } catch (error) {
-                            console.error('Failed to update payment:', error);
-                            alert('Failed to update payment status');
-                          }
-                        }}
-                        style={{
-                          marginLeft: 12,
-                          padding: '8px 12px',
-                          background: '#155724',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Mark as Paid
-                      </button>
-                    )}
                   </div>
                 </div>
 

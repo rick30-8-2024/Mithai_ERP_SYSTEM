@@ -269,52 +269,23 @@ ON CONFLICT (name) DO NOTHING;
 CREATE TABLE IF NOT EXISTS factory_transfers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     transfer_number TEXT NOT NULL UNIQUE,
+    inventory_item_id UUID NOT NULL REFERENCES inventory(id) ON DELETE RESTRICT,
+    quantity NUMERIC NOT NULL,
     from_factory TEXT NOT NULL,
     to_factory TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'Draft',
-    priority TEXT NOT NULL DEFAULT 'Medium',
-    requested_date DATE NOT NULL,
-    scheduled_date DATE,
-    actual_delivery_date DATE,
-    estimated_delivery_date DATE,
-    transport_mode TEXT,
-    driver_details TEXT,
-    vehicle_number TEXT,
-    tracking_number TEXT,
-    total_value NUMERIC NOT NULL DEFAULT 0,
     notes TEXT,
     requested_by TEXT,
-    approved_by TEXT,
-    completed_by TEXT,
     created_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_updated_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_factory_transfers_number ON factory_transfers(transfer_number);
+CREATE INDEX IF NOT EXISTS idx_factory_transfers_inventory_item ON factory_transfers(inventory_item_id);
 CREATE INDEX IF NOT EXISTS idx_factory_transfers_from_factory ON factory_transfers(from_factory);
 CREATE INDEX IF NOT EXISTS idx_factory_transfers_to_factory ON factory_transfers(to_factory);
 CREATE INDEX IF NOT EXISTS idx_factory_transfers_status ON factory_transfers(status);
-CREATE INDEX IF NOT EXISTS idx_factory_transfers_priority ON factory_transfers(priority);
-
-CREATE TABLE IF NOT EXISTS factory_transfer_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    factory_transfer_id UUID NOT NULL REFERENCES factory_transfers(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    category TEXT NOT NULL,
-    current_stock NUMERIC NOT NULL DEFAULT 0,
-    transfer_quantity NUMERIC NOT NULL,
-    unit TEXT NOT NULL,
-    priority TEXT NOT NULL DEFAULT 'Medium',
-    estimated_value NUMERIC NOT NULL DEFAULT 0,
-    requires_refrigeration BOOLEAN NOT NULL DEFAULT FALSE,
-    expiry_date DATE,
-    brand TEXT,
-    grade TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_factory_transfer_items_transfer_id ON factory_transfer_items(factory_transfer_id);
 
 -- ============================================
 -- SALES ORDER TABLES

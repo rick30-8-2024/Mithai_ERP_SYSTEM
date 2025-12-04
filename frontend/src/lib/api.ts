@@ -649,46 +649,30 @@ export const usersApi = {
 
 /* Factory Transfer types */
 
-export interface TransferItem {
+export interface InventoryItemSimple {
   id: string;
   name: string;
-  type: 'Raw Material' | 'Finished Good' | 'Inventory';
+  sku: string;
   category: string;
-  currentStock: number;
-  transferQuantity: number;
   unit: string;
-  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
-  estimatedValue: number;
-  requiresRefrigeration: boolean;
-  expiryDate?: string | null;
-  brand?: string | null;
-  grade?: string | null;
+  currentStock: number;
+  factory?: string | null;
 }
 
 export interface Transfer {
   id: string;
   transferNumber: string;
+  inventoryItemId: string;
+  quantity: number;
   fromFactory: string;
   toFactory: string;
   status: 'Draft' | 'Pending Approval' | 'Approved' | 'In Transit' | 'Delivered' | 'Cancelled';
-  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
-  requestedDate: string;
-  scheduledDate?: string | null;
-  actualDeliveryDate?: string | null;
-  estimatedDeliveryDate?: string | null;
-  transportMode?: string | null;
-  driverDetails?: string | null;
-  vehicleNumber?: string | null;
-  trackingNumber?: string | null;
-  totalValue: number;
   notes?: string | null;
   requestedBy?: string | null;
-  approvedBy?: string | null;
-  completedBy?: string | null;
   createdDate?: string | null;
   lastUpdated?: string | null;
   lastUpdatedBy?: string | null;
-  items: TransferItem[];
+  inventoryItem?: InventoryItemSimple | null;
 }
 
 export interface FactoryLocation {
@@ -709,7 +693,6 @@ export interface TransferListRequest {
   query?: string;
   status?: string | null;
   factory?: string | null;
-  priority?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -730,6 +713,11 @@ export interface FactoryLocationCreateRequest {
   specialization?: string[];
   distance?: string;
   status?: 'Active' | 'Maintenance' | 'Inactive';
+}
+
+export interface InventorySearchRequest {
+  query: string;
+  limit?: number;
 }
 
 /* Factory Transfer API */
@@ -764,12 +752,44 @@ async function createFactoryLocation(payload: FactoryLocationCreateRequest) {
   return post<{ success: boolean; id: string; message: string }>("/api/factory-transfers/factories/create", payload);
 }
 
+async function searchInventoryItems(params: InventorySearchRequest) {
+  return post<InventoryItemSimple[]>("/api/factory-transfers/inventory/search", {
+    query: params.query ?? "",
+    limit: params.limit ?? 20,
+  });
+}
+
+async function getFactoriesByInventoryItem(inventoryItemId: string) {
+  const res = await fetch(`${BASE_URL}/api/factory-transfers/factories/by-inventory/${inventoryItemId}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text as any;
+  }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.detail || data.message || data.error)) ||
+      `HTTP ${res.status}`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+
+  return data as FactoryLocation[];
+}
+
 async function listTransfers(params: TransferListRequest) {
   return post<TransferListResponse>("/api/factory-transfers/list", {
     query: params.query ?? "",
     status: params.status ?? null,
     factory: params.factory ?? null,
-    priority: params.priority ?? null,
     limit: params.limit ?? 50,
     offset: params.offset ?? 0,
   });
@@ -784,38 +804,14 @@ async function getTransfer(params: { transfer_number?: string; id?: string }) {
 
 export interface TransferCreateRequest {
   transfer_number: string;
+  inventory_item_id: string;
+  quantity: number;
   from_factory: string;
   to_factory: string;
   status?: 'Draft' | 'Pending Approval' | 'Approved' | 'In Transit' | 'Delivered' | 'Cancelled';
-  priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
-  requested_date: string;
-  scheduled_date?: string;
-  actual_delivery_date?: string;
-  estimated_delivery_date?: string;
-  transport_mode?: 'Truck' | 'Rail' | 'Air' | 'Combination';
-  driver_details?: string;
-  vehicle_number?: string;
-  tracking_number?: string;
-  total_value?: number;
   notes?: string;
   requested_by?: string;
-  approved_by?: string;
-  completed_by?: string;
   last_updated_by?: string;
-  items?: Array<{
-    name: string;
-    type: string;
-    category: string;
-    current_stock: number;
-    transfer_quantity: number;
-    unit: string;
-    priority: string;
-    estimated_value: number;
-    requires_refrigeration: boolean;
-    expiry_date?: string;
-    brand?: string;
-    grade?: string;
-  }>;
 }
 
 async function createTransfer(payload: TransferCreateRequest) {
@@ -825,6 +821,8 @@ async function createTransfer(payload: TransferCreateRequest) {
 export const factoryTransfersApi = {
   listFactories: listFactoryLocations,
   createFactory: createFactoryLocation,
+  searchInventoryItems: searchInventoryItems,
+  getFactoriesByInventoryItem: getFactoriesByInventoryItem,
   listTransfers: listTransfers,
   getTransfer: getTransfer,
   createTransfer: createTransfer,
@@ -1129,7 +1127,7 @@ export interface CustomerManagement {
   phones: string[];
   addresses: CustomerAddress[];
   gstin?: string;
-  customerType: 'Regular' | 'Premium' | 'Wholesale' | 'Retail';
+  customerType: 'A' | 'B' | 'C' | 'D' | 'N';
   status: 'Active' | 'Inactive' | 'Blocked';
   creditLimit: number;
   outstandingBalance: number;
@@ -1164,7 +1162,7 @@ export interface CustomerManagementCreateRequest {
   phones: string[];
   addresses: CustomerAddress[];
   gstin?: string;
-  customer_type?: 'Regular' | 'Premium' | 'Wholesale' | 'Retail';
+  customer_type?: 'A' | 'B' | 'C' | 'D' | 'N';
   status?: 'Active' | 'Inactive' | 'Blocked';
   credit_limit?: number;
   outstanding_balance?: number;
@@ -1182,7 +1180,7 @@ export interface CustomerManagementUpdateRequest {
   phones?: string[];
   addresses?: CustomerAddress[];
   gstin?: string;
-  customer_type?: 'Regular' | 'Premium' | 'Wholesale' | 'Retail';
+  customer_type?: 'A' | 'B' | 'C' | 'D' | 'N';
   status?: 'Active' | 'Inactive' | 'Blocked';
   credit_limit?: number;
   outstanding_balance?: number;

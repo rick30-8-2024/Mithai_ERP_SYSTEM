@@ -91,7 +91,7 @@ class CreateRequest(BaseModel):
     phones: List[str] = []
     addresses: List[CustomerAddress] = []
     gstin: Optional[str] = None
-    customer_type: str = "Regular"
+    customer_type: str = "N"
     status: str = "Active"
     credit_limit: float = 0
     outstanding_balance: float = 0
@@ -169,43 +169,49 @@ async def list_customers(req: ListRequest):
             {base_query}
             ORDER BY company_name ASC
             LIMIT ${param_count} OFFSET ${param_count + 1}
+        ),
+        contact_agg AS (
+            SELECT customer_id, array_agg(DISTINCT contact_person ORDER BY contact_person) as contact_persons
+            FROM customer_contacts
+            WHERE customer_id IN (SELECT id FROM customer_base)
+            GROUP BY customer_id
+        ),
+        email_agg AS (
+            SELECT customer_id, array_agg(DISTINCT email ORDER BY email) as emails
+            FROM customer_emails
+            WHERE customer_id IN (SELECT id FROM customer_base)
+            GROUP BY customer_id
+        ),
+        phone_agg AS (
+            SELECT customer_id, array_agg(DISTINCT phone ORDER BY phone) as phones
+            FROM customer_phones
+            WHERE customer_id IN (SELECT id FROM customer_base)
+            GROUP BY customer_id
+        ),
+        address_agg AS (
+            SELECT customer_id, json_agg(
+                json_build_object(
+                    'address', address,
+                    'city', city,
+                    'state', state,
+                    'pincode', pincode
+                ) ORDER BY is_primary DESC, created_date ASC
+            ) as addresses
+            FROM customer_addresses
+            WHERE customer_id IN (SELECT id FROM customer_base)
+            GROUP BY customer_id
         )
         SELECT
             c.*,
-            COALESCE(
-                array_agg(DISTINCT cc.contact_person ORDER BY cc.contact_person)
-                FILTER (WHERE cc.contact_person IS NOT NULL),
-                ARRAY[]::text[]
-            ) as contact_persons,
-            COALESCE(
-                array_agg(DISTINCT ce.email ORDER BY ce.email)
-                FILTER (WHERE ce.email IS NOT NULL),
-                ARRAY[]::text[]
-            ) as emails,
-            COALESCE(
-                array_agg(DISTINCT cp.phone ORDER BY cp.phone)
-                FILTER (WHERE cp.phone IS NOT NULL),
-                ARRAY[]::text[]
-            ) as phones,
-            COALESCE(
-                json_agg(
-                    json_build_object(
-                        'address', ca.address,
-                        'city', ca.city,
-                        'state', ca.state,
-                        'pincode', ca.pincode
-                    ) ORDER BY ca.is_primary DESC, ca.created_date ASC
-                ) FILTER (WHERE ca.address IS NOT NULL),
-                '[]'::json
-            ) as addresses
+            COALESCE(cc.contact_persons, ARRAY[]::text[]) as contact_persons,
+            COALESCE(ce.emails, ARRAY[]::text[]) as emails,
+            COALESCE(cp.phones, ARRAY[]::text[]) as phones,
+            COALESCE(ca.addresses, '[]'::json) as addresses
         FROM customer_base c
-        LEFT JOIN customer_contacts cc ON c.id = cc.customer_id
-        LEFT JOIN customer_emails ce ON c.id = ce.customer_id
-        LEFT JOIN customer_phones cp ON c.id = cp.customer_id
-        LEFT JOIN customer_addresses ca ON c.id = ca.customer_id
-        GROUP BY c.id, c.company_name, c.gstin, c.customer_type, c.status,
-                 c.credit_limit, c.outstanding_balance, c.payment_terms, c.notes,
-                 c.created_by, c.created_date, c.last_updated, c.last_updated_by
+        LEFT JOIN contact_agg cc ON c.id = cc.customer_id
+        LEFT JOIN email_agg ce ON c.id = ce.customer_id
+        LEFT JOIN phone_agg cp ON c.id = cp.customer_id
+        LEFT JOIN address_agg ca ON c.id = ca.customer_id
         ORDER BY c.company_name ASC
     """
     
@@ -495,44 +501,59 @@ async def get_by_company(req: GetByCompanyRequest):
     pool = await get_db_pool()
     
     optimized_query = """
-        SELECT
-            c.company_name,
-            COALESCE(
-                array_agg(cc.contact_person ORDER BY cc.is_primary DESC, cc.contact_person ASC)
-                FILTER (WHERE cc.contact_person IS NOT NULL),
-                ARRAY[]::text[]
-            ) as contact_persons,
-            COALESCE(
-                array_agg(ce.email ORDER BY ce.is_primary DESC, ce.email ASC)
-                FILTER (WHERE ce.email IS NOT NULL),
-                ARRAY[]::text[]
-            ) as emails,
-            COALESCE(
-                array_agg(cp.phone ORDER BY cp.is_primary DESC, cp.phone ASC)
-                FILTER (WHERE cp.phone IS NOT NULL),
-                ARRAY[]::text[]
-            ) as phones,
-            COALESCE(
-                array_agg(
-                    CONCAT_WS(', ',
-                        ca.address,
-                        NULLIF(ca.city, ''),
-                        NULLIF(ca.state, ''),
-                        NULLIF(ca.pincode, '')
-                    )
-                    ORDER BY ca.is_primary DESC, ca.address ASC
+        WITH customer_base AS (
+            SELECT id, company_name FROM customers
+            WHERE company_name = $1 AND status = 'Active'
+            LIMIT 1
+        ),
+        contact_agg AS (
+            SELECT cc.customer_id, array_agg(DISTINCT cc.contact_person ORDER BY cc.contact_person) as contact_persons
+            FROM customer_contacts cc
+            WHERE cc.customer_id IN (SELECT id FROM customer_base)
+            GROUP BY cc.customer_id
+        ),
+        email_agg AS (
+            SELECT ce.customer_id, array_agg(DISTINCT ce.email ORDER BY ce.email) as emails
+            FROM customer_emails ce
+            WHERE ce.customer_id IN (SELECT id FROM customer_base)
+            GROUP BY ce.customer_id
+        ),
+        phone_agg AS (
+            SELECT cp.customer_id, array_agg(DISTINCT cp.phone ORDER BY cp.phone) as phones
+            FROM customer_phones cp
+            WHERE cp.customer_id IN (SELECT id FROM customer_base)
+            GROUP BY cp.customer_id
+        ),
+        address_agg AS (
+            SELECT ca.customer_id, array_agg(
+                DISTINCT CONCAT_WS(', ',
+                    ca.address,
+                    NULLIF(ca.city, ''),
+                    NULLIF(ca.state, ''),
+                    NULLIF(ca.pincode, '')
                 )
-                FILTER (WHERE ca.address IS NOT NULL),
-                ARRAY[]::text[]
+                ORDER BY CONCAT_WS(', ',
+                    ca.address,
+                    NULLIF(ca.city, ''),
+                    NULLIF(ca.state, ''),
+                    NULLIF(ca.pincode, '')
+                )
             ) as addresses
-        FROM customers c
-        LEFT JOIN customer_contacts cc ON c.id = cc.customer_id
-        LEFT JOIN customer_emails ce ON c.id = ce.customer_id
-        LEFT JOIN customer_phones cp ON c.id = cp.customer_id
-        LEFT JOIN customer_addresses ca ON c.id = ca.customer_id
-        WHERE c.company_name = $1 AND c.status = 'Active'
-        GROUP BY c.company_name
-        LIMIT 1
+            FROM customer_addresses ca
+            WHERE ca.customer_id IN (SELECT id FROM customer_base)
+            GROUP BY ca.customer_id
+        )
+        SELECT
+            cb.company_name,
+            COALESCE(cc.contact_persons, ARRAY[]::text[]) as contact_persons,
+            COALESCE(ce.emails, ARRAY[]::text[]) as emails,
+            COALESCE(cp.phones, ARRAY[]::text[]) as phones,
+            COALESCE(ca.addresses, ARRAY[]::text[]) as addresses
+        FROM customer_base cb
+        LEFT JOIN contact_agg cc ON cb.id = cc.customer_id
+        LEFT JOIN email_agg ce ON cb.id = ce.customer_id
+        LEFT JOIN phone_agg cp ON cb.id = cp.customer_id
+        LEFT JOIN address_agg ca ON cb.id = ca.customer_id
     """
     
     row = await pool.fetchrow(optimized_query, req.company_name)

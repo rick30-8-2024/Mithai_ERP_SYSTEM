@@ -35,7 +35,7 @@ function CustomerManagementComponent() {
     phones: [''] as string[],
     addresses: [{ address: '', city: '', state: '', pincode: '' }] as { address: string; city?: string; state?: string; pincode?: string }[],
     gstin: '',
-    customer_type: 'Regular' as 'Regular' | 'Premium' | 'Wholesale' | 'Retail',
+    customer_type: 'N' as 'A' | 'B' | 'C' | 'D' | 'N',
     status: 'Active' as 'Active' | 'Inactive' | 'Blocked',
     credit_limit: 0,
     outstanding_balance: 0,
@@ -43,7 +43,13 @@ function CustomerManagementComponent() {
     notes: '',
   });
 
-  const customerTypes = ['Regular', 'Premium', 'Wholesale', 'Retail'];
+  const customerTypes = [
+    { value: 'A', label: 'A (No Risk - Good past history, regular old customer)' },
+    { value: 'B', label: 'B (Medium Risk - Slow payment history, regular old customer)' },
+    { value: 'C', label: 'C (High Risk - Slow payment, personal problems, bad financial management)' },
+    { value: 'D', label: 'D (Very High Risk - Urgent attention required, payment recovery required)' },
+    { value: 'N', label: 'N (New Customer)' },
+  ];
   const statuses = ['Active', 'Inactive', 'Blocked'];
 
   useEffect(() => {
@@ -113,6 +119,7 @@ function CustomerManagementComponent() {
         ...formData,
         last_updated_by: localStorage.getItem('ERP_USERNAME') || undefined,
       });
+      setShowAddModal(false);
       setEditingCustomer(null);
       resetForm();
       loadCustomers();
@@ -141,7 +148,7 @@ function CustomerManagementComponent() {
       phones: [''],
       addresses: [{ address: '', city: '', state: '', pincode: '' }],
       gstin: '',
-      customer_type: 'Regular',
+      customer_type: 'N',
       status: 'Active',
       credit_limit: 0,
       outstanding_balance: 0,
@@ -171,9 +178,11 @@ function CustomerManagementComponent() {
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'Premium': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      case 'Wholesale': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'Retail': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'A': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'B': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'C': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      case 'D': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'N': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
     }
   };
@@ -244,21 +253,21 @@ function CustomerManagementComponent() {
           </div>
           <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: '16px', borderRadius: '12px' }}>
             <div style={{ fontSize: '24px', fontWeight: '700', color: '#10b981' }}>
-              {customers.filter(c => c.status === 'Active').length}
+              {customers.filter(c => c.customerType === 'A').length}
             </div>
-            <div style={{ fontSize: '14px', color: 'var(--muted)' }}>Active</div>
+            <div style={{ fontSize: '14px', color: 'var(--muted)' }}>Type A (No Risk)</div>
           </div>
           <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: '16px', borderRadius: '12px' }}>
-            <div style={{ fontSize: '24px', fontWeight: '700', color: '#8b5cf6' }}>
-              {customers.filter(c => c.customerType === 'Premium').length}
+            <div style={{ fontSize: '24px', fontWeight: '700', color: '#ef4444' }}>
+              {customers.filter(c => c.customerType === 'D').length}
             </div>
-            <div style={{ fontSize: '14px', color: 'var(--muted)' }}>Premium</div>
+            <div style={{ fontSize: '14px', color: 'var(--muted)' }}>Type D (Very High Risk)</div>
           </div>
           <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: '16px', borderRadius: '12px' }}>
             <div style={{ fontSize: '24px', fontWeight: '700', color: '#3b82f6' }}>
-              {customers.filter(c => c.customerType === 'Wholesale').length}
+              {customers.filter(c => c.customerType === 'N').length}
             </div>
-            <div style={{ fontSize: '14px', color: 'var(--muted)' }}>Wholesale</div>
+            <div style={{ fontSize: '14px', color: 'var(--muted)' }}>New Customers</div>
           </div>
         </div>
 
@@ -297,7 +306,7 @@ function CustomerManagementComponent() {
             }}
           >
             <option value="">All Types</option>
-            {customerTypes.map(type => <option key={type} value={type}>{type}</option>)}
+            {customerTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
           </select>
           <select
             value={filterByStatus}
@@ -435,7 +444,7 @@ function CustomerManagementComponent() {
                   )}
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Credit Limit</div>
                     <div style={{ fontSize: '16px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -447,6 +456,12 @@ function CustomerManagementComponent() {
                     <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Outstanding</div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: customer.outstandingBalance > 0 ? '#ef4444' : '#10b981' }}>
                       ₹{customer.outstandingBalance.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Over Limit</div>
+                    <div style={{ fontSize: '16px', fontWeight: '700', color: customer.outstandingBalance > customer.creditLimit ? '#ef4444' : '#10b981' }}>
+                      ₹{Math.max(0, customer.outstandingBalance - customer.creditLimit).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -886,7 +901,7 @@ function CustomerManagementComponent() {
                         borderRadius: '8px',
                       }}
                     >
-                      {customerTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                      {customerTypes.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                     </select>
                   </div>
                 </div>

@@ -7,7 +7,6 @@ import {
   Plus,
   MapPin,
   Truck,
-  Calendar,
   Package,
   ArrowRight,
   CheckCircle,
@@ -18,9 +17,8 @@ import {
   Scale,
   X
 } from 'lucide-react';
-import { factoryTransfersApi, Transfer, FactoryLocation } from '../lib/api';
+import { factoryTransfersApi, Transfer, FactoryLocation, InventoryItemSimple } from '../lib/api';
 
-// Modal Component
 type ModalProps = {
   open: boolean;
   title: string;
@@ -127,11 +125,16 @@ function SendToFactory() {
   const [showNewTransferModal, setShowNewTransferModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Data from API
   const [factories, setFactories] = useState<FactoryLocation[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
 
-  // Factory form state
+  const [inventorySearchQuery, setInventorySearchQuery] = useState('');
+  const [inventorySearchResults, setInventorySearchResults] = useState<InventoryItemSimple[]>([]);
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItemSimple | null>(null);
+  const [availableFromFactories, setAvailableFromFactories] = useState<FactoryLocation[]>([]);
+  const [showInventoryDropdown, setShowInventoryDropdown] = useState(false);
+  const inventorySearchRef = useRef<HTMLDivElement>(null);
+
   const [factoryForm, setFactoryForm] = useState({
     name: '',
     location: '',
@@ -143,21 +146,69 @@ function SendToFactory() {
     status: 'Active' as 'Active' | 'Maintenance' | 'Inactive'
   });
 
-  // Transfer form state
   const [transferForm, setTransferForm] = useState({
     fromFactory: '',
     toFactory: '',
-    priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Urgent',
-    scheduledDate: '',
-    estimatedDeliveryDate: '',
-    transportMode: 'Truck' as 'Truck' | 'Rail' | 'Air' | 'Combination',
+    quantity: '',
     notes: '',
   });
 
-  // Fetch data on mount
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (inventorySearchRef.current && !inventorySearchRef.current.contains(event.target as Node)) {
+        setShowInventoryDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const searchInventory = async () => {
+      if (inventorySearchQuery.length < 2) {
+        setInventorySearchResults([]);
+        return;
+      }
+      try {
+        const results = await factoryTransfersApi.searchInventoryItems({ query: inventorySearchQuery, limit: 20 });
+        setInventorySearchResults(results);
+        setShowInventoryDropdown(true);
+      } catch (err) {
+        console.error('Error searching inventory:', err);
+      }
+    };
+
+    const debounceTimer = setTimeout(searchInventory, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [inventorySearchQuery]);
+
+  useEffect(() => {
+    const loadFactoriesForItem = async () => {
+      if (!selectedInventoryItem) {
+        setAvailableFromFactories([]);
+        setTransferForm(prev => ({ ...prev, fromFactory: '' }));
+        return;
+      }
+      try {
+        const itemFactories = await factoryTransfersApi.getFactoriesByInventoryItem(selectedInventoryItem.id);
+        setAvailableFromFactories(itemFactories);
+        if (itemFactories.length === 1) {
+          setTransferForm(prev => ({ ...prev, fromFactory: itemFactories[0].name }));
+        } else {
+          setTransferForm(prev => ({ ...prev, fromFactory: '' }));
+        }
+      } catch (err) {
+        console.error('Error loading factories for item:', err);
+        setAvailableFromFactories([]);
+      }
+    };
+
+    loadFactoriesForItem();
+  }, [selectedInventoryItem]);
 
   const loadData = async () => {
     setLoading(true);
@@ -209,7 +260,6 @@ function SendToFactory() {
         status: factoryForm.status
       });
 
-      // Reset form
       setFactoryForm({
         name: '',
         location: '',
@@ -222,7 +272,7 @@ function SendToFactory() {
       });
 
       setShowFactoryModal(false);
-      await loadData(); // Reload data
+      await loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create factory location');
     } finally {
@@ -230,46 +280,61 @@ function SendToFactory() {
     }
   };
 
+  const handleSelectInventoryItem = (item: InventoryItemSimple) => {
+    setSelectedInventoryItem(item);
+    setInventorySearchQuery(item.name);
+    setShowInventoryDropdown(false);
+  };
+
   const handleCreateTransfer = async () => {
-    if (!transferForm.fromFactory || !transferForm.toFactory || !transferForm.scheduledDate || !transferForm.estimatedDeliveryDate) {
-      alert('Please fill in all required fields');
+    if (!selectedInventoryItem || !transferForm.fromFactory || !transferForm.toFactory || !transferForm.quantity) {
+      alert('Please fill in all required fields (Inventory Item, From Factory, To Factory, and Quantity)');
+      return;
+    }
+
+    const quantity = parseFloat(transferForm.quantity);
+    if (isNaN(quantity) || quantity <= 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+
+    if (quantity > selectedInventoryItem.currentStock) {
+      alert(`Insufficient stock. Available: ${selectedInventoryItem.currentStock} ${selectedInventoryItem.unit}`);
+      return;
+    }
+
+    if (transferForm.fromFactory === transferForm.toFactory) {
+      alert('From Factory and To Factory cannot be the same');
       return;
     }
 
     setLoading(true);
     try {
       const transferNumber = generateTransferNumber();
-      const today = new Date().toISOString().split('T')[0];
 
       await factoryTransfersApi.createTransfer({
         transfer_number: transferNumber,
+        inventory_item_id: selectedInventoryItem.id,
+        quantity: quantity,
         from_factory: transferForm.fromFactory,
         to_factory: transferForm.toFactory,
-        status: 'Draft',
-        priority: transferForm.priority,
-        requested_date: today,
-        scheduled_date: transferForm.scheduledDate,
-        estimated_delivery_date: transferForm.estimatedDeliveryDate,
-        transport_mode: transferForm.transportMode,
+        status: 'Pending Approval',
         notes: transferForm.notes || undefined,
         requested_by: 'System',
-        items: [],
       });
 
-      // Reset form
       setTransferForm({
         fromFactory: '',
         toFactory: '',
-        priority: 'Medium',
-        scheduledDate: '',
-        estimatedDeliveryDate: '',
-        transportMode: 'Truck',
+        quantity: '',
         notes: '',
       });
+      setSelectedInventoryItem(null);
+      setInventorySearchQuery('');
 
       setShowNewTransferModal(false);
-      await loadData(); // Reload data
-      alert('Transfer created successfully! You can now add items to it.');
+      await loadData();
+      alert('Transfer created successfully!');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create transfer');
     } finally {
@@ -282,14 +347,14 @@ function SendToFactory() {
     setShowTransferModal(true);
   };
 
-  const statuses = ['All', 'Draft', 'Pending Approval', 'Approved', 'In Transit', 'Delivered', 'Cancelled'];
+  const statuses = ['All', 'Pending Approval', 'Approved', 'In Transit', 'Delivered', 'Cancelled'];
   const factoryNames = ['All', ...factories.map(f => f.name)];
 
   const filteredTransfers = transfers.filter(transfer => {
     const matchesSearch = transfer.transferNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          transfer.fromFactory.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          transfer.toFactory.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         transfer.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                         (transfer.inventoryItem?.name?.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = filterByStatus === 'All' || transfer.status === filterByStatus;
     const matchesFactory = filterByFactory === 'All' || 
@@ -309,25 +374,8 @@ function SendToFactory() {
         return { bg: '#e9d5ff', color: '#6b21a8', border: '#d8b4fe' };
       case 'Pending Approval':
         return { bg: '#fed7aa', color: '#c2410c', border: '#fdba74' };
-      case 'Draft':
-        return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
       case 'Cancelled':
         return { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' };
-      default:
-        return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'Urgent':
-        return { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' };
-      case 'High':
-        return { bg: '#fed7aa', color: '#c2410c', border: '#fdba74' };
-      case 'Medium':
-        return { bg: '#fef3c7', color: '#b45309', border: '#fde68a' };
-      case 'Low':
-        return { bg: '#d1fae5', color: '#065f46', border: '#a7f3d0' };
       default:
         return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
     }
@@ -363,16 +411,13 @@ function SendToFactory() {
     }
   };
 
-  // Calculate statistics
   const totalTransfers = transfers.length;
   const activeTransfers = transfers.filter(t => ['Approved', 'In Transit'].includes(t.status)).length;
   const completedTransfers = transfers.filter(t => t.status === 'Delivered').length;
-  const pendingTransfers = transfers.filter(t => ['Draft', 'Pending Approval'].includes(t.status)).length;
-  const totalValue = transfers.reduce((sum, transfer) => sum + transfer.totalValue, 0);
+  const pendingTransfers = transfers.filter(t => t.status === 'Pending Approval').length;
 
   return (
     <div className="page" style={{ minHeight: '100vh', padding: '24px', overflow: 'auto' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <button
           onClick={() => navigate('/dashboard')}
@@ -409,13 +454,12 @@ function SendToFactory() {
           <div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Send to Factory</h1>
             <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>
-              Transfer materials between factories
+              Transfer inventory between factories
             </p>
           </div>
         </div>
       </div>
 
-      {/* Statistics Cards */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -462,19 +506,8 @@ function SendToFactory() {
           <div style={{ fontSize: 24, fontWeight: 800, color: '#065f46' }}>{completedTransfers}</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Completed</div>
         </div>
-        <div style={{
-          background: 'var(--panel)',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          padding: 16,
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#0d9488' }}>₹{totalValue.toLocaleString()}</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Total Value</div>
-        </div>
       </div>
 
-      {/* Tabs */}
       <div style={{
         background: 'var(--panel)',
         border: '1px solid var(--border)',
@@ -516,10 +549,8 @@ function SendToFactory() {
         </button>
       </div>
 
-      {/* Tab Content */}
       {activeTab === 'transfers' ? (
         <div>
-          {/* Filters and Actions */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -611,11 +642,9 @@ function SendToFactory() {
             </div>
           </div>
 
-          {/* Transfers List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {filteredTransfers.map((transfer) => {
               const statusStyle = getStatusColor(transfer.status);
-              const priorityStyle = getPriorityColor(transfer.priority);
 
               return (
                 <div
@@ -627,61 +656,64 @@ function SendToFactory() {
                     padding: 16,
                   }}
                 >
-                  {/* Transfer Header */}
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                       <h3 style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>{transfer.transferNumber}</h3>
-                      <span style={{
-                        ...statusStyle,
-                        background: statusStyle.bg,
-                        color: statusStyle.color,
-                        border: `1px solid ${statusStyle.border}`,
-                        padding: '4px 8px',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}>
-                        {getTransferStatusIcon(transfer.status)}
-                        {transfer.status}
-                      </span>
-                      <span style={{
-                        ...priorityStyle,
-                        background: priorityStyle.bg,
-                        color: priorityStyle.color,
-                        border: `1px solid ${priorityStyle.border}`,
-                        padding: '4px 8px',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}>
-                        {transfer.priority}
-                      </span>
+                      {transfer.status !== 'Draft' && (
+                        <span style={{
+                          ...statusStyle,
+                          background: statusStyle.bg,
+                          color: statusStyle.color,
+                          border: `1px solid ${statusStyle.border}`,
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}>
+                          {getTransferStatusIcon(transfer.status)}
+                          {transfer.status}
+                        </span>
+                      )}
                     </div>
+                    {transfer.inventoryItem && (
+                      <div style={{ 
+                        fontSize: 14, 
+                        fontWeight: 600, 
+                        marginBottom: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8
+                      }}>
+                        <Package size={16} style={{ color: 'var(--muted)' }} />
+                        <span>{transfer.inventoryItem.name}</span>
+                        <span style={{ 
+                          background: 'var(--bg)', 
+                          padding: '2px 8px', 
+                          borderRadius: 4, 
+                          fontSize: 12 
+                        }}>
+                          {transfer.quantity} {transfer.inventoryItem.unit}
+                        </span>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--muted)', marginBottom: 8 }}>
                       <span>{transfer.fromFactory}</span>
                       <ArrowRight size={16} />
                       <span>{transfer.toFactory}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--muted)', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Calendar size={14} />
-                        Requested: {transfer.requestedDate}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Truck size={14} />
-                        Expected: {transfer.estimatedDeliveryDate || 'N/A'}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Package size={14} />
-                        {transfer.items.length} items
-                      </div>
+                      {transfer.createdDate && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Clock size={14} />
+                          Created: {new Date(transfer.createdDate).toLocaleDateString()}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Transfer Summary */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -690,8 +722,9 @@ function SendToFactory() {
                     borderTop: '1px solid var(--border)'
                   }}>
                     <div>
-                      <div style={{ fontSize: 18, fontWeight: 800 }}>₹{transfer.totalValue.toLocaleString()}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{transfer.transportMode || 'N/A'}</div>
+                      {transfer.requestedBy && (
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Requested by: {transfer.requestedBy}</div>
+                      )}
                     </div>
                     <button
                       onClick={() => handleViewDetails(transfer)}
@@ -736,7 +769,6 @@ function SendToFactory() {
         </div>
       ) : (
         <div>
-          {/* Add New Factory Button */}
           <div style={{ marginBottom: 24 }}>
             <button
               onClick={() => setShowFactoryModal(true)}
@@ -760,7 +792,6 @@ function SendToFactory() {
             </button>
           </div>
           
-          {/* Factory Locations Grid */}
           {loading ? (
             <div style={{
               textAlign: 'center',
@@ -915,156 +946,94 @@ function SendToFactory() {
         </div>
       )}
 
-      {/* Transfer Details Modal */}
       {showTransferModal && selectedTransfer && (
         <Modal 
           open={showTransferModal} 
           title="Transfer Details" 
           onClose={() => setShowTransferModal(false)}
-          width={900}
+          width={600}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Transport Details Section */}
-            {(selectedTransfer.vehicleNumber || selectedTransfer.driverDetails || selectedTransfer.trackingNumber) && (
+            <div style={{
+              padding: 16,
+              background: 'var(--bg)',
+              borderRadius: 8,
+              border: '1px solid var(--border)'
+            }}>
+              <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Transfer Information</h3>
+              <div style={{ display: 'grid', gap: 12, fontSize: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--muted)' }}>Transfer Number:</span>
+                  <span style={{ fontWeight: 700 }}>{selectedTransfer.transferNumber}</span>
+                </div>
+                {selectedTransfer.status !== 'Draft' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--muted)' }}>Status:</span>
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background: getStatusColor(selectedTransfer.status).bg,
+                      color: getStatusColor(selectedTransfer.status).color,
+                      border: `1px solid ${getStatusColor(selectedTransfer.status).border}`,
+                    }}>
+                      {selectedTransfer.status}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {selectedTransfer.inventoryItem && (
               <div style={{
                 padding: 16,
                 background: 'var(--bg)',
                 borderRadius: 8,
                 border: '1px solid var(--border)'
               }}>
-                <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Transport Details</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 12, fontSize: 14 }}>
-                  {selectedTransfer.vehicleNumber && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Truck size={16} style={{ color: 'var(--muted)' }} />
-                      <span style={{ color: 'var(--muted)' }}>Vehicle:</span>
-                      <span style={{ fontWeight: 700 }}>{selectedTransfer.vehicleNumber}</span>
-                    </div>
-                  )}
-                  {selectedTransfer.driverDetails && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Users size={16} style={{ color: 'var(--muted)' }} />
-                      <span style={{ color: 'var(--muted)' }}>Driver:</span>
-                      <span style={{ fontWeight: 700 }}>{selectedTransfer.driverDetails}</span>
-                    </div>
-                  )}
-                  {selectedTransfer.trackingNumber && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <MapPin size={16} style={{ color: 'var(--muted)' }} />
-                      <span style={{ color: 'var(--muted)' }}>Tracking:</span>
-                      <span style={{ fontWeight: 700 }}>{selectedTransfer.trackingNumber}</span>
-                    </div>
-                  )}
+                <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Inventory Item</h3>
+                <div style={{ display: 'grid', gap: 12, fontSize: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--muted)' }}>Item Name:</span>
+                    <span style={{ fontWeight: 700 }}>{selectedTransfer.inventoryItem.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--muted)' }}>SKU:</span>
+                    <span>{selectedTransfer.inventoryItem.sku}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--muted)' }}>Category:</span>
+                    <span>{selectedTransfer.inventoryItem.category}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--muted)' }}>Transfer Quantity:</span>
+                    <span style={{ fontWeight: 700 }}>{selectedTransfer.quantity} {selectedTransfer.inventoryItem.unit}</span>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Transfer Items Section */}
-            <div>
-              <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Transfer Items</h3>
-              <div style={{
-                maxHeight: '400px',
-                overflowY: 'auto',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: 12
-              }}>
-                {selectedTransfer.items.map((item) => {
-                  const itemPriorityStyle = getPriorityColor(item.priority);
-                  return (
-                    <div
-                      key={item.id}
-                      style={{
-                        background: 'var(--panel)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        padding: 12,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <div>
-                          <h5 style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{item.name}</h5>
-                          <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>{item.category}</p>
-                        </div>
-                        <span style={{
-                          padding: '4px 8px',
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          background: item.type === 'Raw Material' ? '#d1fae5' : 
-                                     item.type === 'Finished Good' ? '#fed7aa' : '#dbeafe',
-                          color: item.type === 'Raw Material' ? '#065f46' : 
-                                 item.type === 'Finished Good' ? '#c2410c' : '#1e40af',
-                          border: `1px solid ${item.type === 'Raw Material' ? '#a7f3d0' : 
-                                              item.type === 'Finished Good' ? '#fdba74' : '#bfdbfe'}`,
-                          height: 'fit-content',
-                        }}>
-                          {item.type}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--muted)' }}>Transfer Qty</span>
-                          <span style={{ fontWeight: 700 }}>{item.transferQuantity} {item.unit}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--muted)' }}>Available</span>
-                          <span>{item.currentStock} {item.unit}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--muted)' }}>Priority</span>
-                          <span style={{
-                            ...itemPriorityStyle,
-                            background: itemPriorityStyle.bg,
-                            color: itemPriorityStyle.color,
-                            border: `1px solid ${itemPriorityStyle.border}`,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}>
-                            {item.priority}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--muted)' }}>Est. Value</span>
-                          <span style={{ fontWeight: 700 }}>₹{item.estimatedValue.toLocaleString()}</span>
-                        </div>
-                        {item.brand && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--muted)' }}>Brand</span>
-                            <span>{item.brand}</span>
-                          </div>
-                        )}
-                        {item.expiryDate && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--muted)' }}>Expiry</span>
-                            <span>{item.expiryDate}</span>
-                          </div>
-                        )}
-                        {item.requiresRefrigeration && (
-                          <div style={{
-                            marginTop: 4,
-                            padding: '4px 8px',
-                            background: '#dbeafe',
-                            color: '#1e40af',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: 4,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textAlign: 'center',
-                          }}>
-                            Cold Chain
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+            <div style={{
+              padding: 16,
+              background: 'var(--bg)',
+              borderRadius: 8,
+              border: '1px solid var(--border)'
+            }}>
+              <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Transfer Route</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 }}>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700 }}>{selectedTransfer.fromFactory}</div>
+                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>From</div>
+                </div>
+                <ArrowRight size={24} style={{ color: 'var(--muted)' }} />
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700 }}>{selectedTransfer.toFactory}</div>
+                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>To</div>
+                </div>
               </div>
             </div>
 
-            {/* Notes Section */}
             {selectedTransfer.notes && (
               <div style={{
                 padding: 12,
@@ -1077,7 +1046,6 @@ function SendToFactory() {
               </div>
             )}
 
-            {/* Metadata */}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -1089,14 +1057,12 @@ function SendToFactory() {
               borderTop: '1px solid var(--border)'
             }}>
               {selectedTransfer.requestedBy && <span>Requested by: {selectedTransfer.requestedBy}</span>}
-              {selectedTransfer.approvedBy && <span>Approved by: {selectedTransfer.approvedBy}</span>}
-              {selectedTransfer.completedBy && <span>Completed by: {selectedTransfer.completedBy}</span>}
+              {selectedTransfer.createdDate && <span>Created: {new Date(selectedTransfer.createdDate).toLocaleString()}</span>}
             </div>
           </div>
         </Modal>
       )}
 
-      {/* Add Factory Location Modal */}
       {showFactoryModal && (
         <Modal 
           open={showFactoryModal} 
@@ -1312,159 +1278,229 @@ function SendToFactory() {
         </Modal>
       )}
 
-      {/* New Transfer Modal */}
       {showNewTransferModal && (
         <Modal
           open={showNewTransferModal}
           title="Create New Transfer"
-          onClose={() => setShowNewTransferModal(false)}
-          width={700}
+          onClose={() => {
+            setShowNewTransferModal(false);
+            setSelectedInventoryItem(null);
+            setInventorySearchQuery('');
+            setTransferForm({
+              fromFactory: '',
+              toFactory: '',
+              quantity: '',
+              notes: '',
+            });
+          }}
+          width={600}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
-                  From Factory <span style={{ color: 'red' }}>*</span>
-                </label>
-                <select
-                  value={transferForm.fromFactory}
-                  onChange={(e) => setTransferForm({ ...transferForm, fromFactory: e.target.value })}
+            <div ref={inventorySearchRef} style={{ position: 'relative' }}>
+              <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
+                Inventory Item <span style={{ color: 'red' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--muted)'
+                }} />
+                <input
+                  type="text"
+                  value={inventorySearchQuery}
+                  onChange={(e) => {
+                    setInventorySearchQuery(e.target.value);
+                    if (selectedInventoryItem && e.target.value !== selectedInventoryItem.name) {
+                      setSelectedInventoryItem(null);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (inventorySearchResults.length > 0) {
+                      setShowInventoryDropdown(true);
+                    }
+                  }}
                   style={{
-                    width: '95%',
-                    padding: '8px 12px',
+                    width: '90%',
+                    padding: '8px 12px 8px 36px',
                     border: '1px solid var(--border)',
                     borderRadius: 8,
                     background: 'var(--panel)',
                     color: 'var(--fg)',
                     fontSize: 14,
-                    cursor: 'pointer',
                   }}
-                >
-                  <option value="">Select Factory</option>
-                  {factories.map(f => (
-                    <option key={f.id} value={f.name}>{f.name}</option>
-                  ))}
-                </select>
+                  placeholder="Search for inventory item..."
+                />
               </div>
+              {showInventoryDropdown && inventorySearchResults.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  boxShadow: 'var(--shadow)',
+                  maxHeight: 200,
+                  overflowY: 'auto',
+                  zIndex: 10,
+                }}>
+                  {inventorySearchResults.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => handleSelectInventoryItem(item)}
+                      style={{
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{item.name}</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                          SKU: {item.sku} | {item.category}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 600 }}>{item.currentStock} {item.unit}</div>
+                        {item.factory && (
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{item.factory}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
-                  To Factory <span style={{ color: 'red' }}>*</span>
-                </label>
-                <select
-                  value={transferForm.toFactory}
-                  onChange={(e) => setTransferForm({ ...transferForm, toFactory: e.target.value })}
+            {selectedInventoryItem && (
+              <div style={{
+                padding: 12,
+                background: 'var(--bg)',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{selectedInventoryItem.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      SKU: {selectedInventoryItem.sku} | {selectedInventoryItem.category}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, color: '#065f46' }}>
+                      Available: {selectedInventoryItem.currentStock} {selectedInventoryItem.unit}
+                    </div>
+                    {selectedInventoryItem.factory && (
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                        Factory: {selectedInventoryItem.factory}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
+                Quantity <span style={{ color: 'red' }}>*</span>
+              </label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={transferForm.quantity}
+                  onChange={(e) => setTransferForm({ ...transferForm, quantity: e.target.value })}
                   style={{
-                    width: '95%',
+                    flex: 1,
                     padding: '8px 12px',
                     border: '1px solid var(--border)',
                     borderRadius: 8,
                     background: 'var(--panel)',
                     color: 'var(--fg)',
                     fontSize: 14,
-                    cursor: 'pointer',
                   }}
-                >
-                  <option value="">Select Factory</option>
-                  {factories.map(f => (
-                    <option key={f.id} value={f.name}>{f.name}</option>
-                  ))}
-                </select>
+                  placeholder="Enter quantity to transfer"
+                  min="0"
+                  step="0.01"
+                />
+                {selectedInventoryItem && (
+                  <span style={{ 
+                    padding: '8px 12px', 
+                    background: 'var(--bg)', 
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600
+                  }}>
+                    {selectedInventoryItem.unit}
+                  </span>
+                )}
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
-                  Priority
-                </label>
-                <select
-                  value={transferForm.priority}
-                  onChange={(e) => setTransferForm({ ...transferForm, priority: e.target.value as any })}
-                  style={{
-                    width: '95%',
-                    padding: '8px 12px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    background: 'var(--panel)',
-                    color: 'var(--fg)',
-                    fontSize: 14,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
-                  <option value="High">High</option>
-                  <option value="Urgent">Urgent</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
-                  Transport Mode
-                </label>
-                <select
-                  value={transferForm.transportMode}
-                  onChange={(e) => setTransferForm({ ...transferForm, transportMode: e.target.value as any })}
-                  style={{
-                    width: '95%',
-                    padding: '8px 12px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    background: 'var(--panel)',
-                    color: 'var(--fg)',
-                    fontSize: 14,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <option value="Truck">Truck</option>
-                  <option value="Rail">Rail</option>
-                  <option value="Air">Air</option>
-                  <option value="Combination">Combination</option>
-                </select>
-              </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
+                From Factory <span style={{ color: 'red' }}>*</span>
+              </label>
+              <select
+                value={transferForm.fromFactory}
+                onChange={(e) => setTransferForm({ ...transferForm, fromFactory: e.target.value })}
+                disabled={!selectedInventoryItem || availableFromFactories.length === 0}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  background: 'var(--panel)',
+                  color: 'var(--fg)',
+                  fontSize: 14,
+                  cursor: !selectedInventoryItem ? 'not-allowed' : 'pointer',
+                  opacity: !selectedInventoryItem ? 0.6 : 1,
+                }}
+              >
+                <option value="">
+                  {!selectedInventoryItem 
+                    ? 'Select inventory item first' 
+                    : availableFromFactories.length === 0 
+                      ? 'No factory has this item' 
+                      : 'Select Factory'}
+                </option>
+                {availableFromFactories.map(f => (
+                  <option key={f.id} value={f.name}>{f.name}</option>
+                ))}
+              </select>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
-                  Scheduled Date <span style={{ color: 'red' }}>*</span>
-                </label>
-                <input
-                  type="date"
-                  value={transferForm.scheduledDate}
-                  onChange={(e) => setTransferForm({ ...transferForm, scheduledDate: e.target.value })}
-                  style={{
-                    width: '87%',
-                    padding: '8px 12px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    background: 'var(--panel)',
-                    color: 'var(--fg)',
-                    fontSize: 14,
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
-                  Estimated Delivery Date <span style={{ color: 'red' }}>*</span>
-                </label>
-                <input
-                  type="date"
-                  value={transferForm.estimatedDeliveryDate}
-                  onChange={(e) => setTransferForm({ ...transferForm, estimatedDeliveryDate: e.target.value })}
-                  style={{
-                    width: '87%',
-                    padding: '8px 12px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    background: 'var(--panel)',
-                    color: 'var(--fg)',
-                    fontSize: 14,
-                  }}
-                />
-              </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 600 }}>
+                To Factory <span style={{ color: 'red' }}>*</span>
+              </label>
+              <select
+                value={transferForm.toFactory}
+                onChange={(e) => setTransferForm({ ...transferForm, toFactory: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  background: 'var(--panel)',
+                  color: 'var(--fg)',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Select Factory</option>
+                {factories.map(f => (
+                  <option key={f.id} value={f.name}>{f.name}</option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -1474,7 +1510,7 @@ function SendToFactory() {
               <textarea
                 value={transferForm.notes}
                 onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })}
-                rows={4}
+                rows={3}
                 style={{
                   width: '95%',
                   padding: '8px 12px',
@@ -1490,28 +1526,16 @@ function SendToFactory() {
               />
             </div>
 
-            <div style={{
-              padding: 12,
-              background: '#fef3c7',
-              border: '1px solid #fde68a',
-              borderRadius: 8,
-              fontSize: 13,
-              color: '#854d0e'
-            }}>
-              <strong>Note:</strong> After creating the transfer, you'll be able to add items to it from the transfer details page.
-            </div>
-
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
               <button
                 onClick={() => {
                   setShowNewTransferModal(false);
+                  setSelectedInventoryItem(null);
+                  setInventorySearchQuery('');
                   setTransferForm({
                     fromFactory: '',
                     toFactory: '',
-                    priority: 'Medium',
-                    scheduledDate: '',
-                    estimatedDeliveryDate: '',
-                    transportMode: 'Truck',
+                    quantity: '',
                     notes: '',
                   });
                 }}

@@ -17,21 +17,6 @@ def _to_float(v) -> float:
     return 0.0 if v is None else float(v)
 
 
-class TransferItem(BaseModel):
-    name: str
-    type: str  # 'Raw Material', 'Finished Good', 'Inventory'
-    category: str
-    current_stock: float
-    transfer_quantity: float
-    unit: str
-    priority: str = 'Medium'
-    estimated_value: float
-    requires_refrigeration: bool = False
-    expiry_date: Optional[str] = None
-    brand: Optional[str] = None
-    grade: Optional[str] = None
-
-
 class FactoryLocation(BaseModel):
     name: str
     location: str
@@ -59,53 +44,23 @@ def _row_to_factory_location(row) -> dict:
     }
 
 
-def _row_to_transfer(row, items: List[dict] = None) -> dict:
+def _row_to_transfer(row, inventory_item: dict = None) -> dict:
     return {
         "id": str(row["id"]),
         "transferNumber": row["transfer_number"],
+        "inventoryItemId": str(row["inventory_item_id"]),
+        "quantity": _to_float(row["quantity"]),
         "fromFactory": row["from_factory"],
         "toFactory": row["to_factory"],
         "status": row["status"],
-        "priority": row["priority"],
-        "requestedDate": row["requested_date"].isoformat() if row.get("requested_date") else None,
-        "scheduledDate": row["scheduled_date"].isoformat() if row.get("scheduled_date") else None,
-        "actualDeliveryDate": row["actual_delivery_date"].isoformat() if row.get("actual_delivery_date") else None,
-        "estimatedDeliveryDate": row["estimated_delivery_date"].isoformat() if row.get("estimated_delivery_date") else None,
-        "transportMode": row.get("transport_mode"),
-        "driverDetails": row.get("driver_details"),
-        "vehicleNumber": row.get("vehicle_number"),
-        "trackingNumber": row.get("tracking_number"),
-        "totalValue": _to_float(row["total_value"]),
         "notes": row.get("notes"),
         "requestedBy": row.get("requested_by"),
-        "approvedBy": row.get("approved_by"),
-        "completedBy": row.get("completed_by"),
         "createdDate": row["created_date"].isoformat() if row.get("created_date") else None,
         "lastUpdated": row["last_updated"].isoformat() if row.get("last_updated") else None,
         "lastUpdatedBy": row.get("last_updated_by"),
-        "items": items or [],
+        "inventoryItem": inventory_item,
     }
 
-
-def _row_to_transfer_item(row) -> dict:
-    return {
-        "id": str(row["id"]),
-        "name": row["name"],
-        "type": row["type"],
-        "category": row["category"],
-        "currentStock": _to_float(row["current_stock"]),
-        "transferQuantity": _to_float(row["transfer_quantity"]),
-        "unit": row["unit"],
-        "priority": row["priority"],
-        "estimatedValue": _to_float(row["estimated_value"]),
-        "requiresRefrigeration": row["requires_refrigeration"],
-        "expiryDate": row["expiry_date"].isoformat() if row.get("expiry_date") else None,
-        "brand": row.get("brand"),
-        "grade": row.get("grade"),
-    }
-
-
-# Factory Locations Endpoints
 
 @factory_transfers_router.get("/factories")
 async def list_factory_locations():
@@ -140,13 +95,81 @@ async def create_factory_location(req: FactoryLocation):
             raise HTTPException(status_code=500, detail=str(e))
 
 
-# Transfer Endpoints
+class InventorySearchRequest(BaseModel):
+    query: str = ""
+    limit: int = 20
+
+
+class InventoryItemSimple(BaseModel):
+    id: str
+    name: str
+    sku: str
+    category: str
+    unit: str
+    current_stock: float
+    factory: Optional[str] = None
+
+
+@factory_transfers_router.post("/inventory/search")
+async def search_inventory_items(req: InventorySearchRequest):
+    """Search inventory items for autocomplete in transfer form."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, name, sku, category, unit, current_stock, factory 
+            FROM inventory 
+            WHERE (name ILIKE $1 OR sku ILIKE $1)
+            AND current_stock > 0
+            ORDER BY name
+            LIMIT $2
+            """,
+            f"%{req.query}%", req.limit
+        )
+        return [
+            {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "sku": row["sku"],
+                "category": row["category"],
+                "unit": row["unit"],
+                "currentStock": _to_float(row["current_stock"]),
+                "factory": row.get("factory"),
+            }
+            for row in rows
+        ]
+
+
+@factory_transfers_router.get("/factories/by-inventory/{inventory_item_id}")
+async def get_factories_by_inventory_item(inventory_item_id: str):
+    """Get factories where the specified inventory item is available."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        inventory_row = await conn.fetchrow(
+            "SELECT id, factory, current_stock FROM inventory WHERE id = $1",
+            inventory_item_id
+        )
+        
+        if not inventory_row:
+            raise HTTPException(status_code=404, detail="Inventory item not found")
+        
+        factory_name = inventory_row.get("factory")
+        
+        if not factory_name:
+            return []
+        
+        factory_rows = await conn.fetch(
+            "SELECT * FROM factory_locations WHERE name = $1 AND status = 'Active'",
+            factory_name
+        )
+        
+        return [_row_to_factory_location(row) for row in factory_rows]
+
 
 class ListTransfersRequest(BaseModel):
     query: Optional[str] = ""
     status: Optional[str] = None
     factory: Optional[str] = None
-    priority: Optional[str] = None
     limit: int = 50
     offset: int = 0
 
@@ -158,49 +181,27 @@ class GetTransferRequest(BaseModel):
 
 class CreateTransferRequest(BaseModel):
     transfer_number: str
+    inventory_item_id: str
+    quantity: float
     from_factory: str
     to_factory: str
     status: str = "Draft"
-    priority: str = "Medium"
-    requested_date: str
-    scheduled_date: Optional[str] = None
-    actual_delivery_date: Optional[str] = None
-    estimated_delivery_date: Optional[str] = None
-    transport_mode: Optional[str] = None
-    driver_details: Optional[str] = None
-    vehicle_number: Optional[str] = None
-    tracking_number: Optional[str] = None
-    total_value: float = 0
     notes: Optional[str] = None
     requested_by: Optional[str] = None
-    approved_by: Optional[str] = None
-    completed_by: Optional[str] = None
     last_updated_by: Optional[str] = None
-    items: List[TransferItem] = []
 
 
 class UpdateTransferRequest(BaseModel):
     id: str
     transfer_number: Optional[str] = None
+    inventory_item_id: Optional[str] = None
+    quantity: Optional[float] = None
     from_factory: Optional[str] = None
     to_factory: Optional[str] = None
     status: Optional[str] = None
-    priority: Optional[str] = None
-    requested_date: Optional[str] = None
-    scheduled_date: Optional[str] = None
-    actual_delivery_date: Optional[str] = None
-    estimated_delivery_date: Optional[str] = None
-    transport_mode: Optional[str] = None
-    driver_details: Optional[str] = None
-    vehicle_number: Optional[str] = None
-    tracking_number: Optional[str] = None
-    total_value: Optional[float] = None
     notes: Optional[str] = None
     requested_by: Optional[str] = None
-    approved_by: Optional[str] = None
-    completed_by: Optional[str] = None
     last_updated_by: Optional[str] = None
-    items: Optional[List[TransferItem]] = None
 
 
 class DeleteTransferRequest(BaseModel):
@@ -217,20 +218,18 @@ async def list_transfers(req: ListTransfersRequest):
 
         base_query = """
             SELECT 
-                ft.id, ft.transfer_number, ft.from_factory, ft.to_factory,
-                ft.status, ft.priority, ft.requested_date, ft.scheduled_date,
-                ft.actual_delivery_date, ft.estimated_delivery_date,
-                ft.transport_mode, ft.driver_details, ft.vehicle_number,
-                ft.tracking_number, ft.total_value, ft.notes, ft.requested_by,
-                ft.approved_by, ft.completed_by, ft.created_date,
-                ft.last_updated, ft.last_updated_by
+                ft.id, ft.transfer_number, ft.inventory_item_id, ft.quantity,
+                ft.from_factory, ft.to_factory, ft.status, ft.notes, 
+                ft.requested_by, ft.created_date, ft.last_updated, ft.last_updated_by,
+                i.name as item_name, i.sku as item_sku, i.category as item_category,
+                i.unit as item_unit, i.current_stock as item_current_stock
             FROM factory_transfers ft
+            LEFT JOIN inventory i ON ft.inventory_item_id = i.id
             WHERE 1=1
         """
 
-        # Add filters
         if req.query:
-            query_parts.append(f"AND (ft.transfer_number ILIKE ${param_idx} OR ft.from_factory ILIKE ${param_idx} OR ft.to_factory ILIKE ${param_idx})")
+            query_parts.append(f"AND (ft.transfer_number ILIKE ${param_idx} OR ft.from_factory ILIKE ${param_idx} OR ft.to_factory ILIKE ${param_idx} OR i.name ILIKE ${param_idx})")
             params.append(f"%{req.query}%")
             param_idx += 1
 
@@ -244,12 +243,6 @@ async def list_transfers(req: ListTransfersRequest):
             params.append(req.factory)
             param_idx += 1
 
-        if req.priority:
-            query_parts.append(f"AND ft.priority = ${param_idx}")
-            params.append(req.priority)
-            param_idx += 1
-
-        # Build final query
         final_query = base_query + " ".join(query_parts) + f" ORDER BY ft.created_date DESC LIMIT ${param_idx} OFFSET ${param_idx + 1}"
         params.extend([req.limit, req.offset])
 
@@ -257,21 +250,22 @@ async def list_transfers(req: ListTransfersRequest):
         
         result = []
         for row in rows:
-            # Fetch items for this transfer
-            items_rows = await conn.fetch(
-                """
-                SELECT * FROM factory_transfer_items 
-                WHERE factory_transfer_id = $1
-                ORDER BY name
-                """,
-                row["id"]
-            )
-            items = [_row_to_transfer_item(item_row) for item_row in items_rows]
-            result.append(_row_to_transfer(row, items))
+            inventory_item = {
+                "id": str(row["inventory_item_id"]),
+                "name": row["item_name"],
+                "sku": row["item_sku"],
+                "category": row["item_category"],
+                "unit": row["item_unit"],
+                "currentStock": _to_float(row["item_current_stock"]),
+            } if row["item_name"] else None
+            result.append(_row_to_transfer(row, inventory_item))
 
-        # Get total count
-        count_query = "SELECT COUNT(*) FROM factory_transfers ft WHERE 1=1 " + " ".join(query_parts)
-        count_params = params[:-2]  # Exclude limit and offset
+        count_query = """
+            SELECT COUNT(*) FROM factory_transfers ft
+            LEFT JOIN inventory i ON ft.inventory_item_id = i.id
+            WHERE 1=1 
+        """ + " ".join(query_parts)
+        count_params = params[:-2]
         total = await conn.fetchval(count_query, *count_params)
 
         return {"items": result, "total": total, "limit": req.limit, "offset": req.offset}
@@ -285,21 +279,43 @@ async def get_transfer(req: GetTransferRequest):
     pool = await get_db_pool()
     async with pool.acquire() as conn:
         if req.id:
-            row = await conn.fetchrow("SELECT * FROM factory_transfers WHERE id = $1", req.id)
+            row = await conn.fetchrow(
+                """
+                SELECT ft.*, i.name as item_name, i.sku as item_sku, 
+                       i.category as item_category, i.unit as item_unit, 
+                       i.current_stock as item_current_stock
+                FROM factory_transfers ft
+                LEFT JOIN inventory i ON ft.inventory_item_id = i.id
+                WHERE ft.id = $1
+                """, 
+                req.id
+            )
         else:
-            row = await conn.fetchrow("SELECT * FROM factory_transfers WHERE transfer_number = $1", req.transfer_number)
+            row = await conn.fetchrow(
+                """
+                SELECT ft.*, i.name as item_name, i.sku as item_sku, 
+                       i.category as item_category, i.unit as item_unit, 
+                       i.current_stock as item_current_stock
+                FROM factory_transfers ft
+                LEFT JOIN inventory i ON ft.inventory_item_id = i.id
+                WHERE ft.transfer_number = $1
+                """, 
+                req.transfer_number
+            )
 
         if not row:
             raise HTTPException(status_code=404, detail="Transfer not found")
 
-        # Fetch items
-        items_rows = await conn.fetch(
-            "SELECT * FROM factory_transfer_items WHERE factory_transfer_id = $1 ORDER BY name",
-            row["id"]
-        )
-        items = [_row_to_transfer_item(item_row) for item_row in items_rows]
+        inventory_item = {
+            "id": str(row["inventory_item_id"]),
+            "name": row["item_name"],
+            "sku": row["item_sku"],
+            "category": row["item_category"],
+            "unit": row["item_unit"],
+            "currentStock": _to_float(row["item_current_stock"]),
+        } if row["item_name"] else None
 
-        return _row_to_transfer(row, items)
+        return _row_to_transfer(row, inventory_item)
 
 
 @factory_transfers_router.post("/create")
@@ -307,46 +323,42 @@ async def create_transfer(req: CreateTransferRequest):
     pool = await get_db_pool()
     async with pool.acquire() as conn:
         try:
-            async with conn.transaction():
-                # Insert transfer
-                transfer_id = await conn.fetchval(
-                    """
-                    INSERT INTO factory_transfers (
-                        transfer_number, from_factory, to_factory, status, priority,
-                        requested_date, scheduled_date, actual_delivery_date,
-                        estimated_delivery_date, transport_mode, driver_details,
-                        vehicle_number, tracking_number, total_value, notes,
-                        requested_by, approved_by, completed_by, last_updated_by
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-                    RETURNING id
-                    """,
-                    req.transfer_number, req.from_factory, req.to_factory, req.status,
-                    req.priority, req.requested_date, req.scheduled_date,
-                    req.actual_delivery_date, req.estimated_delivery_date,
-                    req.transport_mode, req.driver_details, req.vehicle_number,
-                    req.tracking_number, req.total_value, req.notes, req.requested_by,
-                    req.approved_by, req.completed_by, req.last_updated_by
+            inventory_row = await conn.fetchrow(
+                "SELECT id, current_stock, factory FROM inventory WHERE id = $1",
+                req.inventory_item_id
+            )
+            
+            if not inventory_row:
+                raise HTTPException(status_code=400, detail="Inventory item not found")
+            
+            if _to_float(inventory_row["current_stock"]) < req.quantity:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Insufficient stock. Available: {inventory_row['current_stock']}, Requested: {req.quantity}"
                 )
+            
+            transfer_id = await conn.fetchval(
+                """
+                INSERT INTO factory_transfers (
+                    transfer_number, inventory_item_id, quantity,
+                    from_factory, to_factory, status, notes,
+                    requested_by, last_updated_by
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING id
+                """,
+                req.transfer_number, req.inventory_item_id, req.quantity,
+                req.from_factory, req.to_factory, req.status, req.notes,
+                req.requested_by, req.last_updated_by
+            )
 
-                # Insert items
-                for item in req.items:
-                    await conn.execute(
-                        """
-                        INSERT INTO factory_transfer_items (
-                            factory_transfer_id, name, type, category, current_stock,
-                            transfer_quantity, unit, priority, estimated_value,
-                            requires_refrigeration, expiry_date, brand, grade
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                        """,
-                        transfer_id, item.name, item.type, item.category, item.current_stock,
-                        item.transfer_quantity, item.unit, item.priority, item.estimated_value,
-                        item.requires_refrigeration, item.expiry_date, item.brand, item.grade
-                    )
-
-                return {"success": True, "id": str(transfer_id), "message": "Transfer created successfully"}
+            return {"success": True, "id": str(transfer_id), "message": "Transfer created successfully"}
 
         except UniqueViolationError:
             raise HTTPException(status_code=400, detail="Transfer number already exists")
+        except ForeignKeyViolationError:
+            raise HTTPException(status_code=400, detail="Invalid inventory item or factory reference")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -356,135 +368,63 @@ async def update_transfer(req: UpdateTransferRequest):
     pool = await get_db_pool()
     async with pool.acquire() as conn:
         try:
-            async with conn.transaction():
-                # Build update query dynamically
-                updates = []
-                params = []
-                param_idx = 1
+            updates = []
+            params = []
+            param_idx = 1
 
-                if req.transfer_number is not None:
-                    updates.append(f"transfer_number = ${param_idx}")
-                    params.append(req.transfer_number)
-                    param_idx += 1
+            if req.transfer_number is not None:
+                updates.append(f"transfer_number = ${param_idx}")
+                params.append(req.transfer_number)
+                param_idx += 1
 
-                if req.from_factory is not None:
-                    updates.append(f"from_factory = ${param_idx}")
-                    params.append(req.from_factory)
-                    param_idx += 1
+            if req.inventory_item_id is not None:
+                updates.append(f"inventory_item_id = ${param_idx}")
+                params.append(req.inventory_item_id)
+                param_idx += 1
 
-                if req.to_factory is not None:
-                    updates.append(f"to_factory = ${param_idx}")
-                    params.append(req.to_factory)
-                    param_idx += 1
+            if req.quantity is not None:
+                updates.append(f"quantity = ${param_idx}")
+                params.append(req.quantity)
+                param_idx += 1
 
-                if req.status is not None:
-                    updates.append(f"status = ${param_idx}")
-                    params.append(req.status)
-                    param_idx += 1
+            if req.from_factory is not None:
+                updates.append(f"from_factory = ${param_idx}")
+                params.append(req.from_factory)
+                param_idx += 1
 
-                if req.priority is not None:
-                    updates.append(f"priority = ${param_idx}")
-                    params.append(req.priority)
-                    param_idx += 1
+            if req.to_factory is not None:
+                updates.append(f"to_factory = ${param_idx}")
+                params.append(req.to_factory)
+                param_idx += 1
 
-                if req.requested_date is not None:
-                    updates.append(f"requested_date = ${param_idx}")
-                    params.append(req.requested_date)
-                    param_idx += 1
+            if req.status is not None:
+                updates.append(f"status = ${param_idx}")
+                params.append(req.status)
+                param_idx += 1
 
-                if req.scheduled_date is not None:
-                    updates.append(f"scheduled_date = ${param_idx}")
-                    params.append(req.scheduled_date)
-                    param_idx += 1
+            if req.notes is not None:
+                updates.append(f"notes = ${param_idx}")
+                params.append(req.notes)
+                param_idx += 1
 
-                if req.actual_delivery_date is not None:
-                    updates.append(f"actual_delivery_date = ${param_idx}")
-                    params.append(req.actual_delivery_date)
-                    param_idx += 1
+            if req.requested_by is not None:
+                updates.append(f"requested_by = ${param_idx}")
+                params.append(req.requested_by)
+                param_idx += 1
 
-                if req.estimated_delivery_date is not None:
-                    updates.append(f"estimated_delivery_date = ${param_idx}")
-                    params.append(req.estimated_delivery_date)
-                    param_idx += 1
+            if req.last_updated_by is not None:
+                updates.append(f"last_updated_by = ${param_idx}")
+                params.append(req.last_updated_by)
+                param_idx += 1
 
-                if req.transport_mode is not None:
-                    updates.append(f"transport_mode = ${param_idx}")
-                    params.append(req.transport_mode)
-                    param_idx += 1
+            updates.append(f"last_updated = NOW()")
 
-                if req.driver_details is not None:
-                    updates.append(f"driver_details = ${param_idx}")
-                    params.append(req.driver_details)
-                    param_idx += 1
+            if updates:
+                query = f"UPDATE factory_transfers SET {', '.join(updates)} WHERE id = ${param_idx}"
+                params.append(req.id)
+                await conn.execute(query, *params)
 
-                if req.vehicle_number is not None:
-                    updates.append(f"vehicle_number = ${param_idx}")
-                    params.append(req.vehicle_number)
-                    param_idx += 1
-
-                if req.tracking_number is not None:
-                    updates.append(f"tracking_number = ${param_idx}")
-                    params.append(req.tracking_number)
-                    param_idx += 1
-
-                if req.total_value is not None:
-                    updates.append(f"total_value = ${param_idx}")
-                    params.append(req.total_value)
-                    param_idx += 1
-
-                if req.notes is not None:
-                    updates.append(f"notes = ${param_idx}")
-                    params.append(req.notes)
-                    param_idx += 1
-
-                if req.requested_by is not None:
-                    updates.append(f"requested_by = ${param_idx}")
-                    params.append(req.requested_by)
-                    param_idx += 1
-
-                if req.approved_by is not None:
-                    updates.append(f"approved_by = ${param_idx}")
-                    params.append(req.approved_by)
-                    param_idx += 1
-
-                if req.completed_by is not None:
-                    updates.append(f"completed_by = ${param_idx}")
-                    params.append(req.completed_by)
-                    param_idx += 1
-
-                if req.last_updated_by is not None:
-                    updates.append(f"last_updated_by = ${param_idx}")
-                    params.append(req.last_updated_by)
-                    param_idx += 1
-
-                updates.append(f"last_updated = NOW()")
-
-                if updates:
-                    query = f"UPDATE factory_transfers SET {', '.join(updates)} WHERE id = ${param_idx}"
-                    params.append(req.id)
-                    await conn.execute(query, *params)
-
-                # Update items if provided
-                if req.items is not None:
-                    # Delete existing items
-                    await conn.execute("DELETE FROM factory_transfer_items WHERE factory_transfer_id = $1", req.id)
-                    
-                    # Insert new items
-                    for item in req.items:
-                        await conn.execute(
-                            """
-                            INSERT INTO factory_transfer_items (
-                                factory_transfer_id, name, type, category, current_stock,
-                                transfer_quantity, unit, priority, estimated_value,
-                                requires_refrigeration, expiry_date, brand, grade
-                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                            """,
-                            req.id, item.name, item.type, item.category, item.current_stock,
-                            item.transfer_quantity, item.unit, item.priority, item.estimated_value,
-                            item.requires_refrigeration, item.expiry_date, item.brand, item.grade
-                        )
-
-                return {"success": True, "message": "Transfer updated successfully"}
+            return {"success": True, "message": "Transfer updated successfully"}
 
         except UniqueViolationError:
             raise HTTPException(status_code=400, detail="Transfer number already exists")
