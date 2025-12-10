@@ -15,6 +15,7 @@ import SendToFactory from './components/SendToFactory';
 import SalesOrder from './components/SalesOrder';
 import SalesOrderApproval from './components/SalesOrderApproval';
 import SalesOrderDispatch from './components/SalesOrderDispatch';
+import GatePass from './components/GatePass';
 import UserManagement from './components/UserManagement';
 import CustomerManagement from './components/CustomerManagement';
 
@@ -141,6 +142,15 @@ function App() {
           element={
             <ProtectedRoute>
               <SalesOrderDispatch />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/gate-pass"
+          element={
+            <ProtectedRoute>
+              <GatePass />
             </ProtectedRoute>
           }
         />

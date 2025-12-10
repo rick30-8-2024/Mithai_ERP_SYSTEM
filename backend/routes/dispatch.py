@@ -457,8 +457,8 @@ async def complete_dispatch(order_id: str, req: CompleteDispatchRequest):
                 year = datetime.now().year
 
                 dispatch_id = f"DISP-{order_number}-{timestamp}"
-                dispatch_number = f"DN-{order_number}-{year}"
-                tracking_number = f"TRK-{order_number}-{year}"
+                dispatch_number = f"DN-{order_number}-{timestamp}"
+                tracking_number = f"TRK-{order_number}-{timestamp}"
 
                 dispatch_insert = """
                     INSERT INTO dispatch_records (

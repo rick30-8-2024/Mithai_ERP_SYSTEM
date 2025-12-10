@@ -17,9 +17,11 @@ import {
   Box,
   X,
   Receipt,
-  Calendar,
+  Download,
+  Loader2,
 } from 'lucide-react';
-import { dispatchApi, type DispatchOrder, type FinishedGood, type WorkOrderForDispatch, type ScheduleDispatchRequest } from '../lib/api';
+import { dispatchApi, customerManagementApi, type DispatchOrder, type FinishedGood, type WorkOrderForDispatch } from '../lib/api';
+import html2pdf from 'html2pdf.js';
 
 type ModalProps = {
   open: boolean;
@@ -134,6 +136,27 @@ interface LogisticsEntry {
   itemAllocations: Record<string, number>;
 }
 
+interface DispatchedItemInfo {
+  name: string;
+  quantity: number;
+  unit: string;
+}
+
+interface DispatchedOrderInfo {
+  dsNumber: string;
+  orderNumber: string;
+  customerCompany: string;
+  customerName: string;
+  customerAddress: string;
+  customerGst: string;
+  transportService: string;
+  vehicleNumber: string;
+  dispatchDate: string;
+  dueDate: string;
+  items: DispatchedItemInfo[];
+  createdAt: string;
+}
+
 export default function SalesOrderDispatch() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<DispatchOrder[]>([]);
@@ -150,7 +173,6 @@ export default function SalesOrderDispatch() {
 
   const [showHoldDialog, setShowHoldDialog] = useState(false);
   const [showDispatchDialog, setShowDispatchDialog] = useState(false);
-  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<DispatchOrder | null>(null);
   const [holdReason, setHoldReason] = useState('');
 
@@ -158,16 +180,12 @@ export default function SalesOrderDispatch() {
   const [itemInventories, setItemInventories] = useState<Record<string, ItemInventory>>({});
   const [logisticsEntries, setLogisticsEntries] = useState<LogisticsEntry[]>([]);
 
-  const [scheduleStep, setScheduleStep] = useState<'select' | 'details'>('select');
-  const [selectedOrderForSchedule, setSelectedOrderForSchedule] = useState<DispatchOrder | null>(null);
-  const [scheduleFormData, setScheduleFormData] = useState({
-    scheduledDate: '',
-    estimatedDeliveryDate: '',
-    deliveryType: 'Standard' as 'Standard' | 'Express' | 'Same Day' | 'Scheduled',
-    vehicleNumber: '',
-    driverName: '',
-    driverContact: '',
-    specialInstructions: ''
+  const [dispatchedOrderInfo, setDispatchedOrderInfo] = useState<DispatchedOrderInfo | null>(null);
+  const [showDownloadCard, setShowDownloadCard] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dsCounter, setDsCounter] = useState<number>(() => {
+    const stored = localStorage.getItem('ERP_DS_COUNTER');
+    return stored ? parseInt(stored, 10) : 1000;
   });
 
   const statuses = ['All', 'Ready for Dispatch', 'Packaging', 'Dispatched', 'In Transit', 'Delivered', 'On Hold', 'Delayed'];
@@ -268,76 +286,6 @@ export default function SalesOrderDispatch() {
         return { bg: '#ffebee', text: '#c62828', border: '#ef9a9a' };
       default:
         return { bg: '#f5f5f5', text: '#424242', border: '#e0e0e0' };
-    }
-  };
-
-  const handleScheduleDispatch = () => {
-    setScheduleStep('select');
-    setSelectedOrderForSchedule(null);
-    setScheduleFormData({
-      scheduledDate: '',
-      estimatedDeliveryDate: '',
-      deliveryType: 'Standard',
-      vehicleNumber: '',
-      driverName: '',
-      driverContact: '',
-      specialInstructions: ''
-    });
-    setShowScheduleDialog(true);
-  };
-
-  const handleSelectOrderForSchedule = (order: DispatchOrder) => {
-    setSelectedOrderForSchedule(order);
-    const today = new Date();
-    const defaultScheduleDate = today.toISOString().split('T')[0];
-    const defaultDeliveryDate = new Date(today.setDate(today.getDate() + 3)).toISOString().split('T')[0];
-    setScheduleFormData(prev => ({
-      ...prev,
-      scheduledDate: defaultScheduleDate,
-      estimatedDeliveryDate: defaultDeliveryDate
-    }));
-    setScheduleStep('details');
-  };
-
-  const confirmScheduleDispatch = async () => {
-    if (!selectedOrderForSchedule) {
-      alert('Please select an order to schedule');
-      return;
-    }
-
-    if (!scheduleFormData.scheduledDate) {
-      alert('Please enter a scheduled dispatch date');
-      return;
-    }
-
-    if (!scheduleFormData.estimatedDeliveryDate) {
-      alert('Please enter an estimated delivery date');
-      return;
-    }
-
-    try {
-      const username = localStorage.getItem('ERP_USERNAME') || 'User';
-      const payload: ScheduleDispatchRequest = {
-        order_id: parseInt(selectedOrderForSchedule.id),
-        scheduled_date: scheduleFormData.scheduledDate,
-        estimated_delivery_date: scheduleFormData.estimatedDeliveryDate,
-        delivery_type: scheduleFormData.deliveryType,
-        vehicle_number: scheduleFormData.vehicleNumber || undefined,
-        driver_name: scheduleFormData.driverName || undefined,
-        driver_contact: scheduleFormData.driverContact || undefined,
-        special_instructions: scheduleFormData.specialInstructions || undefined,
-        created_by: username
-      };
-
-      await dispatchApi.scheduleDispatch(payload);
-      alert('Dispatch scheduled successfully!');
-      setShowScheduleDialog(false);
-      setSelectedOrderForSchedule(null);
-      setScheduleStep('select');
-      loadData();
-    } catch (error) {
-      console.error('Failed to schedule dispatch:', error);
-      alert('Failed to schedule dispatch: ' + (error as Error).message);
     }
   };
 
@@ -561,12 +509,367 @@ export default function SalesOrderDispatch() {
     return hasAtLeastOneAllocation;
   };
 
+  const generateDeliverySlipHTML = (info: DispatchedOrderInfo): string => {
+    const itemRows = info.items.map(item => `
+      <tr>
+        <td class="item-name">${item.name}</td>
+        <td class="kg">${item.quantity} ${item.unit}</td>
+        <td class="tray"></td>
+        <td class="cartoon"></td>
+      </tr>
+    `).join('');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Slip - ${info.dsNumber}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #fff;
+            padding: 0;
+            margin: 0;
+        }
+
+        .delivery-slip {
+            width: 100%;
+            max-width: 100%;
+            background-color: #fff;
+            padding: 15px 20px;
+            border: 2px solid #333;
+            box-sizing: border-box;
+        }
+
+        .header-title {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 8px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .header-content {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            border-bottom: 3px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .logo-section {
+            width: 120px;
+            margin-right: 20px;
+        }
+
+        .logo-placeholder {
+            width: 100px;
+            height: 80px;
+            background-color: #8B0000;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            border-radius: 5px;
+        }
+
+        .logo-placeholder .company-name {
+            font-size: 16px;
+        }
+
+        .logo-placeholder .tagline {
+            font-size: 8px;
+            margin-top: 5px;
+        }
+
+        .company-details {
+            flex: 1;
+        }
+
+        .company-details h2 {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            border-bottom: 1px dashed #333;
+            padding-bottom: 3px;
+        }
+
+        .company-details p {
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .info-row {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        .info-row .field {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+        }
+
+        .info-row .field label {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .info-row .field .value {
+            border-bottom: 1px solid #333;
+            min-width: 60px;
+            padding: 0 4px 2px 4px;
+        }
+
+        .full-width-field {
+            margin-bottom: 8px;
+            font-size: 13px;
+            display: flex;
+            align-items: baseline;
+        }
+
+        .full-width-field label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .full-width-field .value {
+            border-bottom: 1px solid #333;
+            flex: 1;
+            min-height: 18px;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        .items-table th,
+        .items-table td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .items-table th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+
+        .items-table th.item-name,
+        .items-table td.item-name {
+            width: 45%;
+            text-align: left;
+            padding-left: 10px;
+        }
+
+        .items-table th.kg,
+        .items-table td.kg {
+            width: 15%;
+        }
+
+        .items-table th.tray,
+        .items-table td.tray {
+            width: 20%;
+        }
+
+        .items-table th.cartoon,
+        .items-table td.cartoon {
+            width: 20%;
+        }
+
+        .items-table td {
+            height: 25px;
+        }
+
+        .table-footer {
+            text-align: center;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 10px;
+            border: 1px solid #333;
+            border-top: none;
+            letter-spacing: 1px;
+        }
+
+        .footer-section {
+            margin-top: 15px;
+            font-size: 11px;
+        }
+
+        .footer-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 5px;
+        }
+
+        .bill-note {
+            font-weight: normal;
+        }
+
+        .signature-area {
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .gstin {
+            font-weight: bold;
+        }
+
+        @media print {
+            body {
+                background-color: white;
+                padding: 0;
+            }
+
+            .delivery-slip {
+                width: 100%;
+                min-height: auto;
+                border: 2px solid #333;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="delivery-slip">
+        <div class="header-title">DELIVERY SLIP</div>
+        
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-placeholder">
+                    <span>the</span>
+                    <span class="company-name">mithai</span>
+                    <span>company</span>
+                    <span class="tagline">THE TASTE OF SWEET LOVERS</span>
+                </div>
+            </div>
+            <div class="company-details">
+                <h2>JANET's RETAIL AND DISTRIBUTION PVT. LTD.</h2>
+                <p>Plot No. 321/2, Lions School Road, Phase-01,</p>
+                <p>Naroda, G.I.D.C., Ahmedabad-382 330.</p>
+                <p>(M) 9512008888, 9687040000</p>
+            </div>
+        </div>
+
+        <div class="info-row">
+            <div class="field ds-no">
+                <label>D.S. No.</label>
+                <span class="value">${info.dsNumber}</span>
+            </div>
+            <div class="field date">
+                <label>Date:</label>
+                <span class="value" style="min-width: 30px;">${info.dispatchDate}</span>
+            </div>
+        </div>
+
+        <div class="full-width-field">
+            <label>M/s.</label>
+            <span class="value">${info.customerCompany} - ${info.customerName}</span>
+        </div>
+
+        <div class="full-width-field">
+            <label>Address</label>
+            <span class="value">${info.customerAddress}</span>
+        </div>
+
+        <div class="full-width-field">
+            <label>Party GSTIN No.</label>
+            <span class="value">${info.customerGst || '✗'}</span>
+        </div>
+
+        <div class="full-width-field">
+            <label>Transport Service</label>
+            <span class="value">${info.transportService} (${info.vehicleNumber})</span>
+        </div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th class="item-name">Item Name</th>
+                    <th class="kg">Qty.</th>
+                    <th class="tray">Tray</th>
+                    <th class="cartoon">Cartoon</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${itemRows}
+            </tbody>
+        </table>
+
+        <div class="table-footer">THE TASTE OF SWEET LOVERS</div>
+
+        <div class="footer-section">
+            <div class="footer-row">
+                <span class="bill-note">Bill of this Delivery slip will be Received next day.</span>
+                <span class="signature-area">For, Janet's Retail and Distribution Pvt. Ltd.</span>
+            </div>
+            <div class="gstin">GSTIN : 24AAECJ5526H1ZO</div>
+        </div>
+    </div>
+</body>
+</html>`;
+  };
+
+  const downloadDeliverySlipAsPDF = (info: DispatchedOrderInfo) => {
+    const htmlContent = generateDeliverySlipHTML(info);
+    
+    const container = document.createElement('div');
+    container.innerHTML = htmlContent;
+    document.body.appendChild(container);
+    
+    const element = container.querySelector('.delivery-slip');
+    if (element) {
+      const opt = {
+        margin: 10,
+        filename: `GatePass-${info.dsNumber}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff'
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
+      
+      html2pdf().set(opt).from(element).save().then(() => {
+        document.body.removeChild(container);
+      });
+    } else {
+      document.body.removeChild(container);
+    }
+  };
+
   const confirmCompleteDispatch = async () => {
     if (!selectedOrder || !isInventoryValid() || !isLogisticsValid()) {
       alert('Please complete all required fields correctly');
       return;
     }
 
+    setIsDispatching(true);
     try {
       const username = localStorage.getItem('ERP_USERNAME') || 'User';
       
@@ -598,15 +901,84 @@ export default function SalesOrderDispatch() {
         created_by: username
       });
 
-      alert(`Dispatch completed successfully!${response.tracking_number ? `\nTracking Number: ${response.tracking_number}` : ''}`);
+      let customerGst = '';
+      try {
+        const companies = await customerManagementApi.searchCompanies(selectedOrder.customerCompany, 1);
+        if (companies.companies && companies.companies.length > 0) {
+          const customerData = await customerManagementApi.getByCompany(selectedOrder.customerCompany);
+          if (customerData) {
+            const fullCustomer = await customerManagementApi.list({ query: selectedOrder.customerCompany, limit: 1 });
+            if (fullCustomer.items && fullCustomer.items.length > 0) {
+              customerGst = fullCustomer.items[0].gstin || '';
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Could not fetch customer GST:', e);
+      }
+
+      const newDsNumber = dsCounter + 1;
+      setDsCounter(newDsNumber);
+      localStorage.setItem('ERP_DS_COUNTER', newDsNumber.toString());
+
+      const dispatchedItems: DispatchedItemInfo[] = [];
+      logisticsEntries.forEach(entry => {
+        Object.entries(entry.itemAllocations).forEach(([itemId, qty]) => {
+          if (qty > 0) {
+            const orderItem = selectedOrder.items.find(i => i.id === itemId);
+            if (orderItem) {
+              const existing = dispatchedItems.find(d => d.name === orderItem.name);
+              if (existing) {
+                existing.quantity += qty;
+              } else {
+                dispatchedItems.push({
+                  name: orderItem.name,
+                  quantity: qty,
+                  unit: orderItem.unit
+                });
+              }
+            }
+          }
+        });
+      });
+
+      const firstLogistics = logisticsEntries[0];
+      const transportService = firstLogistics.transportService === 'Other'
+        ? firstLogistics.otherTransportService
+        : firstLogistics.transportService;
+
+      const dispatchInfo: DispatchedOrderInfo = {
+        dsNumber: `DS-${newDsNumber}`,
+        orderNumber: selectedOrder.orderNumber,
+        customerCompany: selectedOrder.customerCompany,
+        customerName: selectedOrder.customerName,
+        customerAddress: selectedOrder.deliveryAddress || 'N/A',
+        customerGst: customerGst,
+        transportService: transportService,
+        vehicleNumber: firstLogistics.vehicleNumber,
+        dispatchDate: new Date().toLocaleDateString('en-IN'),
+        dueDate: selectedOrder.dueDate,
+        items: dispatchedItems,
+        createdAt: new Date().toISOString()
+      };
+
+      const existingGatePasses = JSON.parse(localStorage.getItem('ERP_GATE_PASSES') || '[]');
+      existingGatePasses.push(dispatchInfo);
+      localStorage.setItem('ERP_GATE_PASSES', JSON.stringify(existingGatePasses));
+
+      setDispatchedOrderInfo(dispatchInfo);
+      setShowDownloadCard(true);
       setShowDispatchDialog(false);
       setSelectedOrder(null);
+      
       setItemInventories({});
       setLogisticsEntries([]);
       loadData();
     } catch (error) {
       console.error('Failed to complete dispatch:', error);
       alert('Failed to complete dispatch: ' + (error as Error).message);
+    } finally {
+      setIsDispatching(false);
     }
   };
 
@@ -873,25 +1245,6 @@ export default function SalesOrderDispatch() {
             >
               {priorities.map(p => <option key={p} value={p}>{p === 'All' ? 'All Priorities' : p}</option>)}
             </select>
-            <button
-              onClick={handleScheduleDispatch}
-              style={{
-                padding: '10px 16px',
-                border: 'none',
-                borderRadius: 10,
-                fontSize: 14,
-                fontWeight: 600,
-                background: '#00695c',
-                color: 'white',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
-            >
-              <Plus width={16} height={16} />
-              Schedule Dispatch
-            </button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: 16 }}>
@@ -931,28 +1284,46 @@ export default function SalesOrderDispatch() {
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginBottom: 6 }}>Items for Dispatch:</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {order.items.map(item => (
-                      <div key={item.id} style={{ fontSize: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                          <span style={{ fontWeight: 600 }}>{item.name}</span>
-                          <span style={{ color: 'var(--fg-muted)' }}>
-                            {item.quantity} {item.unit} ({item.weight} {item.weightUnit})
-                          </span>
-                        </div>
-                        {item.sku && (
-                          <div style={{ fontSize: 11, color: 'var(--fg-muted)', paddingLeft: 4 }}>
-                            SKU: {item.sku}
+                    {order.items.map(item => {
+                      const remainingQty = item.quantity - (item.dispatchedQuantity || 0);
+                      return (
+                        <div key={item.id} style={{ fontSize: 12 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                            <span style={{ fontWeight: 600 }}>{item.name}</span>
+                            <span style={{ color: 'var(--fg-muted)' }}>
+                              {item.quantity} {item.unit} ({remainingQty} {item.unit})
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          {item.sku && (
+                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', paddingLeft: 4 }}>
+                              SKU: {item.sku}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13 }}>
                   <span style={{ color: 'var(--fg-muted)' }}>Total Weight</span>
                   <span style={{ fontWeight: 600 }}>
-                    {order.items.reduce((sum, item) => sum + item.weight, 0)} kg
+                    {(() => {
+                      const weightUnits = ['kg', 'g', 'gram', 'grams', 'kilogram', 'kilograms'];
+                      let totalWeightKg = 0;
+                      order.items.forEach(item => {
+                        const unitLower = item.unit.toLowerCase();
+                        if (weightUnits.includes(unitLower)) {
+                          const remainingQty = item.quantity - (item.dispatchedQuantity || 0);
+                          if (unitLower === 'g' || unitLower === 'gram' || unitLower === 'grams') {
+                            totalWeightKg += remainingQty / 1000;
+                          } else {
+                            totalWeightKg += remainingQty;
+                          }
+                        }
+                      });
+                      return totalWeightKg > 0 ? `${totalWeightKg.toFixed(2)} kg` : '0 kg';
+                    })()}
                   </span>
                 </div>
 
@@ -1207,395 +1578,94 @@ export default function SalesOrderDispatch() {
         )}
       </div>
 
-      <Modal open={showScheduleDialog} title="Schedule Dispatch" onClose={() => setShowScheduleDialog(false)} width={800}>
-        <div>
-          {scheduleStep === 'select' ? (
-            <>
-              <div style={{ marginBottom: 16, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 13 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Calendar width={16} height={16} />
-                  <span style={{ fontWeight: 600 }}>Step 1: Select Order</span>
-                </div>
-                Select an order to schedule for dispatch. Only orders with status "Ready for Dispatch", "Packaging", or "Partially Fulfilled" can be scheduled.
+      {showDownloadCard && dispatchedOrderInfo && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 999,
+          background: 'var(--panel)',
+          border: '2px solid #00695c',
+          borderRadius: 16,
+          padding: 20,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+          width: 320,
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          <style>{`
+            @keyframes slideIn {
+              from {
+                transform: translateY(100px);
+                opacity: 0;
+              }
+              to {
+                transform: translateY(0);
+                opacity: 1;
+              }
+            }
+          `}</style>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#00695c' }}>Dispatch Completed!</div>
+              <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>
+                {dispatchedOrderInfo.dsNumber}
               </div>
+            </div>
+            <button
+              onClick={() => {
+                setShowDownloadCard(false);
+                setDispatchedOrderInfo(null);
+                setSelectedOrder(null);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 4
+              }}
+            >
+              <X width={18} height={18} />
+            </button>
+          </div>
+          
+          <div style={{ fontSize: 13, marginBottom: 16 }}>
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ color: 'var(--fg-muted)' }}>Order: </span>
+              <span style={{ fontWeight: 600 }}>{dispatchedOrderInfo.orderNumber}</span>
+            </div>
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ color: 'var(--fg-muted)' }}>Customer: </span>
+              <span style={{ fontWeight: 600 }}>{dispatchedOrderInfo.customerCompany}</span>
+            </div>
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ color: 'var(--fg-muted)' }}>Items: </span>
+              <span style={{ fontWeight: 600 }}>{dispatchedOrderInfo.items.length}</span>
+            </div>
+          </div>
 
-              {orders.filter(o => ['Ready for Dispatch', 'Packaging', 'Partially Fulfilled'].includes(o.status)).length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: 'var(--fg-muted)' }}>
-                  <Truck width={48} height={48} style={{ marginBottom: 16, opacity: 0.5 }} />
-                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No Orders Ready for Dispatch</div>
-                  <div style={{ fontSize: 14 }}>All orders are either already dispatched, delivered, or on hold.</div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '50vh', overflowY: 'auto' }}>
-                  {orders
-                    .filter(o => ['Ready for Dispatch', 'Packaging', 'Partially Fulfilled'].includes(o.status))
-                    .map(order => (
-                      <div
-                        key={order.id}
-                        style={{
-                          border: '1px solid var(--border)',
-                          borderRadius: 10,
-                          padding: 16,
-                          background: 'var(--bg)',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onClick={() => handleSelectOrderForSchedule(order)}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = '#00695c';
-                          e.currentTarget.style.background = '#e0f2f1';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--border)';
-                          e.currentTarget.style.background = 'var(--bg)';
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
-                          <div>
-                            <div style={{ fontSize: 15, fontWeight: 700 }}>{order.customerCompany}</div>
-                            <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{order.orderNumber}</div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <div style={{
-                              padding: '4px 10px',
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              ...getStatusColor(order.status)
-                            }}>
-                              {order.status}
-                            </div>
-                            <div style={{
-                              padding: '4px 10px',
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              ...getPriorityColor(order.priority)
-                            }}>
-                              {order.priority}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                          {order.items.map(item => (
-                            <div
-                              key={item.id}
-                              style={{
-                                padding: '4px 8px',
-                                background: 'var(--panel)',
-                                borderRadius: 6,
-                                fontSize: 12
-                              }}
-                            >
-                              {item.name} x {item.quantity}
-                            </div>
-                          ))}
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--fg-muted)' }}>
-                            <User width={12} height={12} />
-                            <span>{order.customerName}</span>
-                          </div>
-                          <div style={{ fontWeight: 600, color: '#00695c' }}>
-                            ₹{order.finalAmount.toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                <button
-                  onClick={() => setShowScheduleDialog(false)}
-                  style={{
-                    padding: '10px 20px',
-                    border: '1.5px solid var(--border)',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    background: 'transparent',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ marginBottom: 16, padding: 12, background: '#e3f2fd', borderRadius: 8, fontSize: 13 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Calendar width={16} height={16} />
-                  <span style={{ fontWeight: 600 }}>Step 2: Schedule Details</span>
-                </div>
-                Enter dispatch scheduling details for the selected order.
-              </div>
-
-              {selectedOrderForSchedule && (
-                <div style={{
-                  marginBottom: 20,
-                  padding: 16,
-                  background: 'var(--bg)',
-                  borderRadius: 10,
-                  border: '1px solid var(--border)'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 700 }}>{selectedOrderForSchedule.customerCompany}</div>
-                      <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{selectedOrderForSchedule.orderNumber}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <div style={{
-                        padding: '4px 10px',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        ...getStatusColor(selectedOrderForSchedule.status)
-                      }}>
-                        {selectedOrderForSchedule.status}
-                      </div>
-                      <div style={{
-                        padding: '4px 10px',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        ...getPriorityColor(selectedOrderForSchedule.priority)
-                      }}>
-                        {selectedOrderForSchedule.priority}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
-                    <div>
-                      <span style={{ color: 'var(--fg-muted)' }}>Customer: </span>
-                      <span style={{ fontWeight: 600 }}>{selectedOrderForSchedule.customerName}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--fg-muted)' }}>Amount: </span>
-                      <span style={{ fontWeight: 600, color: '#00695c' }}>₹{selectedOrderForSchedule.finalAmount.toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    Scheduled Dispatch Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={scheduleFormData.scheduledDate}
-                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, scheduledDate: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13,
-                      background: 'var(--panel)'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    Estimated Delivery Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={scheduleFormData.estimatedDeliveryDate}
-                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, estimatedDeliveryDate: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13,
-                      background: 'var(--panel)'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    Delivery Type *
-                  </label>
-                  <select
-                    value={scheduleFormData.deliveryType}
-                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, deliveryType: e.target.value as any }))}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13,
-                      background: 'var(--panel)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="Standard">Standard</option>
-                    <option value="Express">Express</option>
-                    <option value="Same Day">Same Day</option>
-                    <option value="Scheduled">Scheduled</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    Vehicle Number
-                  </label>
-                  <input
-                    type="text"
-                    value={scheduleFormData.vehicleNumber}
-                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, vehicleNumber: e.target.value }))}
-                    placeholder="e.g., MH-12-AB-1234"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    Driver Name
-                  </label>
-                  <input
-                    type="text"
-                    value={scheduleFormData.driverName}
-                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, driverName: e.target.value }))}
-                    placeholder="Enter driver name"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    Driver Contact
-                  </label>
-                  <input
-                    type="text"
-                    value={scheduleFormData.driverContact}
-                    onChange={(e) => setScheduleFormData(prev => ({ ...prev, driverContact: e.target.value }))}
-                    placeholder="Enter contact number"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                  Special Instructions
-                </label>
-                <textarea
-                  value={scheduleFormData.specialInstructions}
-                  onChange={(e) => setScheduleFormData(prev => ({ ...prev, specialInstructions: e.target.value }))}
-                  placeholder="Any special handling or delivery instructions..."
-                  rows={3}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1.5px solid var(--border)',
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontFamily: 'inherit',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
-
-              <div style={{
-                display: 'flex',
-                gap: 12,
-                justifyContent: 'flex-end',
-                paddingTop: 16,
-                borderTop: '1px solid var(--border)'
-              }}>
-                <button
-                  onClick={() => setScheduleStep('select')}
-                  style={{
-                    padding: '10px 20px',
-                    border: '1.5px solid var(--border)',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
-                >
-                  <ChevronLeft width={16} height={16} />
-                  Back
-                </button>
-                <button
-                  onClick={() => {
-                    setShowScheduleDialog(false);
-                    handleCompleteDispatch(selectedOrderForSchedule!);
-                  }}
-                  style={{
-                    padding: '10px 20px',
-                    border: '1.5px solid #1565c0',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    background: 'transparent',
-                    color: '#1565c0',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
-                >
-                  <CheckCircle width={16} height={16} />
-                  Complete Dispatch Now
-                </button>
-                <button
-                  onClick={confirmScheduleDispatch}
-                  disabled={!scheduleFormData.scheduledDate || !scheduleFormData.estimatedDeliveryDate}
-                  style={{
-                    padding: '10px 20px',
-                    border: 'none',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    background: (!scheduleFormData.scheduledDate || !scheduleFormData.estimatedDeliveryDate) ? '#ccc' : '#00695c',
-                    color: 'white',
-                    cursor: (!scheduleFormData.scheduledDate || !scheduleFormData.estimatedDeliveryDate) ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
-                >
-                  <Calendar width={16} height={16} />
-                  Schedule Dispatch
-                </button>
-              </div>
-            </>
-          )}
+          <button
+            onClick={() => downloadDeliverySlipAsPDF(dispatchedOrderInfo)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 600,
+              background: '#00695c',
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8
+            }}
+          >
+            <Download width={18} height={18} />
+            Download Gate Pass
+          </button>
         </div>
-      </Modal>
+      )}
 
       <Modal open={showHoldDialog} title="Put Order on Hold" onClose={() => setShowHoldDialog(false)} width={500}>
         {selectedOrder && (
@@ -2138,23 +2208,32 @@ export default function SalesOrderDispatch() {
                   </button>
                   <button
                     onClick={confirmCompleteDispatch}
-                    disabled={!isLogisticsValid()}
+                    disabled={!isLogisticsValid() || isDispatching}
                     style={{
                       padding: '10px 20px',
                       border: 'none',
                       borderRadius: 8,
                       fontSize: 14,
                       fontWeight: 600,
-                      background: !isLogisticsValid() ? '#ccc' : '#00695c',
+                      background: (!isLogisticsValid() || isDispatching) ? '#ccc' : '#00695c',
                       color: 'white',
-                      cursor: !isLogisticsValid() ? 'not-allowed' : 'pointer',
+                      cursor: (!isLogisticsValid() || isDispatching) ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6
                     }}
                   >
-                    <CheckCircle width={16} height={16} />
-                    Confirm Dispatch
+                    {isDispatching ? (
+                      <>
+                        <Loader2 width={16} height={16} style={{ animation: 'spin 1s linear infinite' }} />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle width={16} height={16} />
+                        Confirm Dispatch
+                      </>
+                    )}
                   </button>
                 </>
               )}

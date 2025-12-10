@@ -17,6 +17,30 @@ def _to_float(v) -> float:
     return 0.0 if v is None else float(v)
 
 
+async def _update_customer_outstanding(conn, company_name: str, amount_change: float):
+    """
+    Update customer outstanding balance by company name.
+    amount_change can be positive (add to outstanding) or negative (deduct from outstanding).
+    Uses COALESCE in SQL to properly handle NULL values.
+    """
+    customer_query = "SELECT id FROM customers WHERE company_name = $1 AND status = 'Active' LIMIT 1"
+    customer = await conn.fetchrow(customer_query, company_name)
+    
+    if customer:
+        await conn.execute(
+            """
+            UPDATE customers
+            SET outstanding_balance = GREATEST(COALESCE(outstanding_balance, 0) + $1, 0),
+                last_updated = NOW()
+            WHERE id = $2
+            """,
+            amount_change,
+            customer["id"]
+        )
+        return True
+    return False
+
+
 class SalesOrderItem(BaseModel):
     name: str
     sku: Optional[str] = None
@@ -251,12 +275,10 @@ async def create_sales_order(req: CreateRequest):
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Parse dates
                 order_date = datetime.strptime(req.order_date, "%Y-%m-%d").date() if req.order_date else None
                 due_date = datetime.strptime(req.due_date, "%Y-%m-%d").date() if req.due_date else None
                 delivery_date = datetime.strptime(req.delivery_date, "%Y-%m-%d").date() if req.delivery_date else None
                 
-                # Insert sales order
                 insert_query = """
                     INSERT INTO sales_orders (
                         order_number, customer_company, customer_name, customer_contact,
@@ -294,7 +316,6 @@ async def create_sales_order(req: CreateRequest):
                 )
                 so_id = row["id"]
 
-                # Insert items
                 if req.items:
                     items_query = """
                         INSERT INTO sales_order_items (
@@ -316,6 +337,9 @@ async def create_sales_order(req: CreateRequest):
                             item.total_price,
                         )
 
+                if req.final_amount > 0 and req.customer_company:
+                    await _update_customer_outstanding(conn, req.customer_company, req.final_amount)
+
                 return {
                     "success": True,
                     "id": str(so_id),
@@ -335,13 +359,15 @@ async def update_sales_order(req: UpdateRequest):
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Check if sales order exists
-                check_query = "SELECT id FROM sales_orders WHERE id = $1"
+                check_query = "SELECT id, customer_company, final_amount, payment_status FROM sales_orders WHERE id = $1"
                 existing = await conn.fetchrow(check_query, req.id)
                 if not existing:
                     raise HTTPException(status_code=404, detail="Sales order not found")
 
-                # Build update query dynamically
+                old_payment_status = existing["payment_status"]
+                old_final_amount = _to_float(existing["final_amount"])
+                customer_company = existing["customer_company"]
+
                 updates = []
                 params = []
                 param_count = 1
@@ -427,7 +453,6 @@ async def update_sales_order(req: UpdateRequest):
                     params.append(req.last_updated_by)
                     param_count += 1
 
-                # Always update last_updated timestamp
                 updates.append(f"last_updated = NOW()")
 
                 if updates:
@@ -435,12 +460,9 @@ async def update_sales_order(req: UpdateRequest):
                     params.append(req.id)
                     await conn.execute(update_query, *params)
 
-                # Update items if provided
                 if req.items is not None:
-                    # Delete existing items
                     await conn.execute("DELETE FROM sales_order_items WHERE sales_order_id = $1", req.id)
                     
-                    # Insert new items
                     if req.items:
                         items_query = """
                             INSERT INTO sales_order_items (
@@ -462,6 +484,10 @@ async def update_sales_order(req: UpdateRequest):
                                 item.total_price,
                             )
 
+                new_payment_status = req.payment_status if req.payment_status is not None else old_payment_status
+                if old_payment_status != 'Paid' and new_payment_status == 'Paid' and customer_company:
+                    await _update_customer_outstanding(conn, customer_company, -old_final_amount)
+
                 return {"success": True, "message": "Sales order updated successfully"}
 
     except UniqueViolationError:
@@ -475,17 +501,24 @@ async def delete_sales_order(req: DeleteRequest):
     pool = await get_db_pool()
 
     try:
-        # Check if sales order exists
-        check_query = "SELECT id FROM sales_orders WHERE id = $1"
-        row = await pool.fetchrow(check_query, req.id)
-        if not row:
-            raise HTTPException(status_code=404, detail="Sales order not found")
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                check_query = "SELECT id, customer_company, final_amount, payment_status FROM sales_orders WHERE id = $1"
+                row = await conn.fetchrow(check_query, req.id)
+                if not row:
+                    raise HTTPException(status_code=404, detail="Sales order not found")
 
-        # Delete sales order (items will be cascade deleted)
-        delete_query = "DELETE FROM sales_orders WHERE id = $1"
-        await pool.execute(delete_query, req.id)
+                customer_company = row["customer_company"]
+                final_amount = _to_float(row["final_amount"])
+                payment_status = row["payment_status"]
 
-        return {"success": True, "message": "Sales order deleted successfully"}
+                delete_query = "DELETE FROM sales_orders WHERE id = $1"
+                await conn.execute(delete_query, req.id)
+
+                if payment_status != 'Paid' and final_amount > 0 and customer_company:
+                    await _update_customer_outstanding(conn, customer_company, -final_amount)
+
+                return {"success": True, "message": "Sales order deleted successfully"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

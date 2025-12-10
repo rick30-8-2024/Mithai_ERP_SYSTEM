@@ -212,7 +212,7 @@ async def list_work_orders(payload: ListRequest):
                        wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date,
                        wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
                        wo.elapsed_time, wo.expected_time,
-                       r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
+                       r.name as recipe_name, r.sku as recipe_sku,
                        r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                 FROM work_orders wo
                 LEFT JOIN recipes r ON wo.recipe_id = r.id
@@ -263,7 +263,7 @@ async def list_work_orders(payload: ListRequest):
                 "id": str(row["recipe_id"]),
                 "name": row["recipe_name"],
                 "sku": row["recipe_sku"],
-                "category": row["recipe_category"],
+                "category": None,
                 "total_yield": _to_float(row["recipe_total_yield"]),
                 "yield_unit": row["recipe_yield_unit"],
             }
@@ -286,12 +286,12 @@ async def get_work_order(payload: GetRequest):
             if payload.work_order_number:
                 row = await conn.fetchrow(
                     """
-                    SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity, 
+                    SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity,
                            wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
-                           wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date, 
+                           wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date,
                            wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
                            wo.elapsed_time, wo.expected_time,
-                           r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
+                           r.name as recipe_name, r.sku as recipe_sku,
                            r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                     FROM work_orders wo
                     LEFT JOIN recipes r ON wo.recipe_id = r.id
@@ -302,12 +302,12 @@ async def get_work_order(payload: GetRequest):
             else:
                 row = await conn.fetchrow(
                     """
-                    SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity, 
+                    SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity,
                            wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
-                           wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date, 
+                           wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date,
                            wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
                            wo.elapsed_time, wo.expected_time,
-                           r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
+                           r.name as recipe_name, r.sku as recipe_sku,
                            r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                     FROM work_orders wo
                     LEFT JOIN recipes r ON wo.recipe_id = r.id
@@ -323,7 +323,7 @@ async def get_work_order(payload: GetRequest):
             "id": str(row["recipe_id"]),
             "name": row["recipe_name"],
             "sku": row["recipe_sku"],
-            "category": row["recipe_category"],
+            "category": None,
             "total_yield": _to_float(row["recipe_total_yield"]),
             "yield_unit": row["recipe_yield_unit"],
         }
@@ -446,7 +446,7 @@ async def create_work_order(payload: CreateRequest):
                 
                 # Get recipe info including time fields
                 recipe_row = await conn.fetchrow(
-                    "SELECT id, name, sku, category, total_yield, yield_unit, preparation_time, cooking_time FROM recipes WHERE id = $1::uuid",
+                    "SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time FROM recipes WHERE id = $1::uuid",
                     payload.recipe_id
                 )
                 
@@ -469,7 +469,7 @@ async def create_work_order(payload: CreateRequest):
                     "id": str(recipe_row["id"]),
                     "name": recipe_row["name"],
                     "sku": recipe_row["sku"],
-                    "category": recipe_row["category"],
+                    "category": None,
                     "total_yield": _to_float(recipe_row["total_yield"]),
                     "yield_unit": recipe_row["yield_unit"],
                 }
@@ -658,12 +658,12 @@ async def update_work_order(payload: UpdateRequest):
                 # Get updated work order
                 row = await conn.fetchrow(
                     """
-                    SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity, 
+                    SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity,
                            wo.actual_quantity, wo.status, wo.priority, wo.scheduled_date, wo.due_date,
-                           wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date, 
+                           wo.assigned_worker, wo.estimated_cost, wo.notes, wo.created_date,
                            wo.last_updated, wo.last_updated_by, wo.started_at, wo.paused_at, wo.completed_at,
                            wo.elapsed_time, wo.expected_time,
-                           r.name as recipe_name, r.sku as recipe_sku, r.category as recipe_category,
+                           r.name as recipe_name, r.sku as recipe_sku,
                            r.total_yield as recipe_total_yield, r.yield_unit as recipe_yield_unit
                     FROM work_orders wo
                     LEFT JOIN recipes r ON wo.recipe_id = r.id
@@ -676,7 +676,7 @@ async def update_work_order(payload: UpdateRequest):
                     "id": str(row["recipe_id"]),
                     "name": row["recipe_name"],
                     "sku": row["recipe_sku"],
-                    "category": row["recipe_category"],
+                    "category": None,
                     "total_yield": _to_float(row["recipe_total_yield"]),
                     "yield_unit": row["recipe_yield_unit"],
                 }

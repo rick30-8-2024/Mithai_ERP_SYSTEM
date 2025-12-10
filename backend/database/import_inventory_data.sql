@@ -508,7 +508,7 @@ VALUES ('1kg Kaju Katri Tray barrier four liner', 'NULL-1KGKAJUKATRITRAYBARRIERF
 ON CONFLICT (sku) DO NOTHING;
 
 INSERT INTO inventory (name, sku, category, unit, current_stock, min_stock, max_stock, brand, grade, packing_weight, category_type, packing_qty, factory, cost_per_unit)
-VALUES ('2kg 3 liner barrier tray(horizontal)', 'NULL-2KG3LINERBARRIERTRAYHORIZONTAL', 'Packing Material', 'Nos', 0, 0, 100, NULL, NULL, NULL, NULL, NULL, NULL, 10.00)
+VALUES ('2kg 3 liner barrier tray(horizontal)', 'NULL-2KG3LINERBARRIERTRAYHORIZONTAL', 'Packing Material', 'Nos', 0, 0, 100, NULL, NULL, NULL, NULL, NULL, 'Western Distribution Hub', 10.00)
 ON CONFLICT (sku) DO NOTHING;
 
 INSERT INTO inventory (name, sku, category, unit, current_stock, min_stock, max_stock, brand, grade, packing_weight, category_type, packing_qty, factory, cost_per_unit)

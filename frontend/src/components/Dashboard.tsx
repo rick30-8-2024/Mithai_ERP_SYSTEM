@@ -292,6 +292,8 @@ function Dashboard() {
                     navigate('/sales-order-dispatch');
                   } else if (l.includes('sales order')) {
                     navigate('/sales-orders');
+                  } else if (l.includes('gate') || l.includes('inward')) {
+                    navigate('/gate-pass');
                   } else if (l.includes('user management')) {
                     navigate('/user-management');
                   } else if (l.includes('customer management')) {

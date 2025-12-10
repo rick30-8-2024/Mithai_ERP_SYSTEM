@@ -307,7 +307,7 @@ export interface WorkOrderRecipe {
   id: string;
   name: string;
   sku: string;
-  category: string;
+  category?: string | null;
   total_yield: number;
   yield_unit: string;
 }
