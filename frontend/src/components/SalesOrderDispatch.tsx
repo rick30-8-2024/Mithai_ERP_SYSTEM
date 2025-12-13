@@ -192,7 +192,6 @@ export default function SalesOrderDispatch() {
 
   const statuses = ['All', 'Ready for Dispatch', 'Packaging', 'Dispatched', 'In Transit', 'Delivered', 'On Hold', 'Delayed'];
   const priorities = ['All', 'Low', 'Medium', 'High', 'Urgent'];
-  const transportServices = ['Blue Dart', 'DTDC', 'Delhivery', 'FedEx', 'India Post', 'Professional Couriers', 'Gati', 'Other'];
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -914,7 +913,7 @@ export default function SalesOrderDispatch() {
         )
       }));
 
-      const response = await dispatchApi.completeDispatch(selectedOrder.id, {
+      await dispatchApi.completeDispatch(selectedOrder.id, {
         inventory_assignments,
         logistics,
         created_by: username

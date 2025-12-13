@@ -12,7 +12,6 @@ import {
   MapPin,
   Package,
   Filter,
-  X,
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 
@@ -53,6 +52,7 @@ export default function GatePass() {
 
   useEffect(() => {
     applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gatePasses, searchTerm, dateFilter, customStartDate, customEndDate]);
 
   const loadGatePasses = () => {

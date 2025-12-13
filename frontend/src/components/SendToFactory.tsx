@@ -7,12 +7,9 @@ import {
   Search,
   Plus,
   MapPin,
-  Truck,
   Package,
   ArrowRight,
-  CheckCircle,
   Clock,
-  AlertCircle,
   Building,
   Users,
   Scale,
@@ -365,22 +362,7 @@ function SendToFactory() {
     return matchesSearch && matchesStatus && matchesFactory;
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Delivered':
-        return { bg: '#d1fae5', color: '#065f46', border: '#a7f3d0' };
-      case 'In Transit':
-        return { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe' };
-      case 'Approved':
-        return { bg: '#e9d5ff', color: '#6b21a8', border: '#d8b4fe' };
-      case 'Pending Approval':
-        return { bg: '#fed7aa', color: '#c2410c', border: '#fdba74' };
-      case 'Cancelled':
-        return { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' };
-      default:
-        return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
-    }
-  };
+
 
   const getFactoryStatusColor = (status: string) => {
     switch (status) {
@@ -395,22 +377,7 @@ function SendToFactory() {
     }
   };
 
-  const getTransferStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Delivered':
-        return <CheckCircle size={16} style={{ color: '#065f46' }} />;
-      case 'In Transit':
-        return <Truck size={16} style={{ color: '#1e40af' }} />;
-      case 'Approved':
-        return <CheckCircle size={16} style={{ color: '#6b21a8' }} />;
-      case 'Pending Approval':
-        return <Clock size={16} style={{ color: '#c2410c' }} />;
-      case 'Cancelled':
-        return <AlertCircle size={16} style={{ color: '#991b1b' }} />;
-      default:
-        return <Clock size={16} style={{ color: '#475569' }} />;
-    }
-  };
+
 
   const totalTransfers = transfers.length;
   const activeTransfers = transfers.filter(t => ['Approved', 'In Transit'].includes(t.status)).length;
@@ -646,8 +613,6 @@ function SendToFactory() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {filteredTransfers.map((transfer) => {
-              const statusStyle = getStatusColor(transfer.status);
-
               return (
                 <div
                   key={transfer.id}
