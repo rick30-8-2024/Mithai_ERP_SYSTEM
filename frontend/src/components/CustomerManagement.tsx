@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   UserCheck,
@@ -219,7 +220,7 @@ function CustomerManagementComponent() {
           >
             <ArrowLeft size={16} color="var(--fg)" />
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
             <UserCheck size={24} color="var(--fg)" />
             <div>
               <h1 style={{ fontSize: '24px', fontWeight: '700', margin: 0 }}>Customer Management</h1>
@@ -228,6 +229,7 @@ function CustomerManagementComponent() {
               </p>
             </div>
           </div>
+          <ThemeToggle />
         </div>
 
         {error && (

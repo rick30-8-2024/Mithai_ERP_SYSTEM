@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
+import ThemeToggle from './ThemeToggle';
 import '../App.css';
 import {
   Package,
@@ -67,7 +69,6 @@ function getIcon(name: string, size = 24): React.ReactNode {
 
 function Dashboard() {
   const navigate = useNavigate();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [username] = useState<string>(() => localStorage.getItem('ERP_USERNAME') || 'User');
   const [userPermissions] = useState<string[]>(() => {
     const stored = localStorage.getItem('ERP_USER_PERMISSIONS');
@@ -76,10 +77,6 @@ function Dashboard() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
 
   // Ensure dashboard is scrollable
   useEffect(() => {
@@ -102,8 +99,6 @@ function Dashboard() {
     if (menuOpen) document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [menuOpen]);
-
-  const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
 
   const handleLogout = () => {
     localStorage.removeItem('ERP_USERNAME');
@@ -195,59 +190,7 @@ function Dashboard() {
             </div>
 
             {/* Theme toggle beside username (with sun/moon icons) */}
-            <label className="switch" aria-label="Toggle light and dark mode">
-              <input
-                type="checkbox"
-                checked={theme === 'dark'}
-                onChange={toggleTheme}
-                aria-checked={theme === 'dark'}
-              />
-              <span className="slider">
-                {/* Moon icon (dark) */}
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute',
-                    left: 6,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 16,
-                    height: 16,
-                    opacity: theme === 'dark' ? 1 : 0,
-                    transition: 'opacity .25s ease'
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                  </svg>
-                </span>
-                {/* Sun icon (light) */}
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute',
-                    right: 6,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 16,
-                    height: 16,
-                    opacity: theme === 'light' ? 1 : 0,
-                    transition: 'opacity .25s ease'
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="12" r="4" />
-                    <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" stroke="currentColor" strokeWidth="2" fill="none" />
-                  </svg>
-                </span>
-              </span>
-            </label>
+            <ThemeToggle />
           </div>
         </section>
 
@@ -262,47 +205,14 @@ function Dashboard() {
           {Object.entries(DASHBOARD_DATA[header])
             .filter(([name]) => userPermissions.length === 0 || userPermissions.includes(name))
             .map(([name, arr]) => {
-            const desc = Array.isArray(arr) ? arr[0] : '';
-            const isHovered = hovered === name;
-            return (
-              <div
-                key={name}
-                onMouseEnter={() => setHovered(name)}
-                onMouseLeave={() => setHovered(null)}
-                onClick={() => {
-                  const l = name.toLowerCase();
-                  if (l.includes('inventory')) {
-                    navigate('/inventory');
-                  } else if (l.includes('recipe')) {
-                    navigate('/recipe-management');
-                  } else if (l === 'my work orders') {
-                    navigate('/work-orders');
-                  } else if (l.includes('work order')) {
-                    navigate('/work-order');
-                  } else if (l.includes('kitchen')) {
-                    navigate('/kitchen-display');
-                  } else if (l.includes('purchase')) {
-                    navigate('/purchase-orders');
-                  } else if (l.includes('send to factory')) {
-                    navigate('/send-to-factory');
-                  } else if (l.includes('sales order approval')) {
-                    navigate('/sales-order-approval');
-                  } else if (l.includes('sales order dispatch')) {
-                    navigate('/sales-order-dispatch');
-                  } else if (l.includes('sales order')) {
-                    navigate('/sales-orders');
-                  } else if (l.includes('gate') || l.includes('inward')) {
-                    navigate('/gate-pass');
-                  } else if (l.includes('user management')) {
-                    navigate('/user-management');
-                  } else if (l.includes('customer management')) {
-                    navigate('/customer-management');
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+              const desc = Array.isArray(arr) ? arr[0] : '';
+              const isHovered = hovered === name;
+              return (
+                <div
+                  key={name}
+                  onMouseEnter={() => setHovered(name)}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => {
                     const l = name.toLowerCase();
                     if (l.includes('inventory')) {
                       navigate('/inventory');
@@ -324,53 +234,86 @@ function Dashboard() {
                       navigate('/sales-order-dispatch');
                     } else if (l.includes('sales order')) {
                       navigate('/sales-orders');
+                    } else if (l.includes('gate') || l.includes('inward')) {
+                      navigate('/gate-pass');
                     } else if (l.includes('user management')) {
                       navigate('/user-management');
                     } else if (l.includes('customer management')) {
                       navigate('/customer-management');
                     }
-                  }
-                }}
-                style={{
-                  background: 'var(--panel)',
-                  backgroundImage: 'radial-gradient(900px 160px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)',
-                  border: isHovered ? '1.5px solid var(--fg)' : '1px solid var(--border)',
-                  borderRadius: 16,
-                  padding: 24,
-                  minHeight: 160,
-                  boxShadow: isHovered ? '0 12px 32px rgba(0,0,0,0.20)' : 'var(--shadow)',
-                  transform: isHovered ? 'translateY(-6px) scale(1.02)' : 'none',
-                  transition: 'transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  textAlign: 'left',
-                  gap: 12
-                }}
-              >
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    border: isHovered ? '1.5px solid var(--fg)' : '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: isHovered ? 'var(--bg)' : 'var(--fg)',
-                    background: isHovered ? 'var(--fg)' : 'transparent',
-                    transition: 'all .22s ease'
                   }}
-                  aria-hidden
->
-                  {getIcon(name, 26)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      const l = name.toLowerCase();
+                      if (l.includes('inventory')) {
+                        navigate('/inventory');
+                      } else if (l.includes('recipe')) {
+                        navigate('/recipe-management');
+                      } else if (l === 'my work orders') {
+                        navigate('/work-orders');
+                      } else if (l.includes('work order')) {
+                        navigate('/work-order');
+                      } else if (l.includes('kitchen')) {
+                        navigate('/kitchen-display');
+                      } else if (l.includes('purchase')) {
+                        navigate('/purchase-orders');
+                      } else if (l.includes('send to factory')) {
+                        navigate('/send-to-factory');
+                      } else if (l.includes('sales order approval')) {
+                        navigate('/sales-order-approval');
+                      } else if (l.includes('sales order dispatch')) {
+                        navigate('/sales-order-dispatch');
+                      } else if (l.includes('sales order')) {
+                        navigate('/sales-orders');
+                      } else if (l.includes('user management')) {
+                        navigate('/user-management');
+                      } else if (l.includes('customer management')) {
+                        navigate('/customer-management');
+                      }
+                    }
+                  }}
+                  style={{
+                    background: 'var(--panel)',
+                    backgroundImage: 'radial-gradient(900px 160px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)',
+                    border: isHovered ? '1.5px solid var(--fg)' : '1px solid var(--border)',
+                    borderRadius: 16,
+                    padding: 24,
+                    minHeight: 160,
+                    boxShadow: isHovered ? '0 12px 32px rgba(0,0,0,0.20)' : 'var(--shadow)',
+                    transform: isHovered ? 'translateY(-6px) scale(1.02)' : 'none',
+                    transition: 'transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    textAlign: 'left',
+                    gap: 12
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: '50%',
+                      border: isHovered ? '1.5px solid var(--fg)' : '1px solid var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: isHovered ? 'var(--bg)' : 'var(--fg)',
+                      background: isHovered ? 'var(--fg)' : 'transparent',
+                      transition: 'all .22s ease'
+                    }}
+                    aria-hidden
+                  >
+                    {getIcon(name, 26)}
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 20 }}>{name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>{desc}</div>
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 20 }}>{name}</div>
-                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{desc}</div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </main>
     </div>

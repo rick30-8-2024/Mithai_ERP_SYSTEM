@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, X, Trash2 } from "lucide-react";
+import ThemeToggle from './ThemeToggle';
 import { workOrdersApi, recipesApi, usersApi, type WorkOrder, type WorkOrderIngredient, type Recipe } from "../lib/api";
 
 type StatusFilter = "All" | "Draft" | "Scheduled" | "In Progress" | "Completed" | "On Hold";
@@ -175,7 +176,6 @@ export default function WorkOrderPage() {
     const [status, setStatus] = useState<StatusFilter>("All");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [theme, setTheme] = useState<'light' | 'dark'>('light');
     const [ingredientsOpen, setIngredientsOpen] = useState(false);
 
     const formatTime = (minutes: number): string => {
@@ -206,12 +206,6 @@ export default function WorkOrderPage() {
             completed: workOrders.filter(wo => wo.status === "Completed").length,
         };
     }, [workOrders]);
-
-    useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-    }, [theme]);
-
-    const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
 
     // Timer for in-progress orders
     useEffect(() => {
@@ -330,57 +324,7 @@ export default function WorkOrderPage() {
                         </div>
                     </div>
 
-                    <label className="switch" aria-label="Toggle light and dark mode" style={{ marginLeft: 16 }}>
-                        <input
-                            type="checkbox"
-                            checked={theme === 'dark'}
-                            onChange={toggleTheme}
-                            aria-checked={theme === 'dark'}
-                        />
-                        <span className="slider">
-                            <span
-                                aria-hidden
-                                style={{
-                                    position: 'absolute',
-                                    left: 6,
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: 16,
-                                    height: 16,
-                                    opacity: theme === 'dark' ? 1 : 0,
-                                    transition: 'opacity .25s ease'
-                                }}
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                                </svg>
-                            </span>
-                            <span
-                                aria-hidden
-                                style={{
-                                    position: 'absolute',
-                                    right: 6,
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: 16,
-                                    height: 16,
-                                    opacity: theme === 'light' ? 1 : 0,
-                                    transition: 'opacity .25s ease'
-                                }}
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <circle cx="12" cy="12" r="4" />
-                                    <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" stroke="currentColor" strokeWidth="2" fill="none" />
-                                </svg>
-                            </span>
-                        </span>
-                    </label>
+                    <ThemeToggle />
                 </section>
 
                 {/* Statistics Cards */}
@@ -817,11 +761,11 @@ function InsufficientStockModal({
                 <div style={{ color: "var(--fg)", fontSize: 14 }}>
                     The following ingredients are not available in sufficient quantities to create this work order:
                 </div>
-                
-                <div style={{ 
-                    border: "1px solid var(--border)", 
-                    borderRadius: 10, 
-                    overflow: "hidden" 
+
+                <div style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    overflow: "hidden"
                 }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead>
@@ -984,7 +928,7 @@ function CreateWorkOrderModal({
             await onSubmit();
         } catch (e: any) {
             let detail = e?.detail;
-            
+
             if (detail && typeof detail === 'object' && detail.insufficient_items) {
                 if (Array.isArray(detail.insufficient_items) && detail.insufficient_items.length > 0) {
                     setInsufficientItems(detail.insufficient_items);
@@ -993,7 +937,7 @@ function CreateWorkOrderModal({
                     return;
                 }
             }
-            
+
             const errorMessage = e?.message || "";
             if (typeof errorMessage === 'string') {
                 try {
@@ -1004,7 +948,7 @@ function CreateWorkOrderModal({
                             .replace(/True/g, 'true')
                             .replace(/False/g, 'false')
                             .replace(/None/g, 'null');
-                        
+
                         const parsed = JSON.parse(pythonDict);
                         if (parsed.insufficient_items && Array.isArray(parsed.insufficient_items) && parsed.insufficient_items.length > 0) {
                             setInsufficientItems(parsed.insufficient_items);
@@ -1016,7 +960,7 @@ function CreateWorkOrderModal({
                 } catch (parseError) {
                 }
             }
-            
+
             if (typeof detail === 'string') {
                 try {
                     const dictMatch = detail.match(/\{[\s\S]*\}/);
@@ -1026,7 +970,7 @@ function CreateWorkOrderModal({
                             .replace(/True/g, 'true')
                             .replace(/False/g, 'false')
                             .replace(/None/g, 'null');
-                        
+
                         const parsed = JSON.parse(pythonDict);
                         if (parsed.insufficient_items && Array.isArray(parsed.insufficient_items) && parsed.insufficient_items.length > 0) {
                             setInsufficientItems(parsed.insufficient_items);
@@ -1038,7 +982,7 @@ function CreateWorkOrderModal({
                 } catch (parseError) {
                 }
             }
-            
+
             setError(detail?.message || errorMessage || "Failed to create work order");
         } finally {
             setSubmitting(false);

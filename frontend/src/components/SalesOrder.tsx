@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   Receipt,
@@ -163,7 +164,7 @@ export default function SalesOrderComponent() {
   const [inventorySearchResults, setInventorySearchResults] = useState<{ [key: number]: InventoryItem[] }>({});
   const [searchingInventory, setSearchingInventory] = useState<{ [key: number]: boolean }>({});
   const [showInventoryDropdown, setShowInventoryDropdown] = useState<{ [key: number]: boolean }>({});
-  
+
   const [companySearchResults, setCompanySearchResults] = useState<string[]>([]);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [customerData, setCustomerData] = useState<{
@@ -177,7 +178,7 @@ export default function SalesOrderComponent() {
     phones: [],
     addresses: [],
   });
-  
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
   const [editStatus, setEditStatus] = useState('');
@@ -237,7 +238,7 @@ export default function SalesOrderComponent() {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this sales order?')) return;
-    
+
     try {
       await salesOrdersApi.delete(id);
       alert('Sales order deleted successfully');
@@ -436,7 +437,7 @@ export default function SalesOrderComponent() {
     }
 
     console.log('Updated item:', updatedItems[index]);
-    
+
     setFormItems(updatedItems);
     setShowInventoryDropdown({ ...showInventoryDropdown, [index]: false });
     setInventorySearchResults({ ...inventorySearchResults, [index]: [] });
@@ -445,11 +446,11 @@ export default function SalesOrderComponent() {
   const updateItem = (index: number, field: keyof FormItem, value: any) => {
     const updatedItems = [...formItems];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
-    
+
     if (field === 'quantity' || field === 'unit_price') {
       updatedItems[index].total_price = updatedItems[index].quantity * updatedItems[index].unit_price;
     }
-    
+
     setFormItems(updatedItems);
   };
 
@@ -460,7 +461,7 @@ export default function SalesOrderComponent() {
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (formItems.length === 0) {
       alert('Please add at least one item to the order');
       return;
@@ -573,7 +574,7 @@ export default function SalesOrderComponent() {
         >
           <ArrowLeft width={20} height={20} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
           <div
             style={{
               width: 48,
@@ -595,6 +596,7 @@ export default function SalesOrderComponent() {
             </p>
           </div>
         </div>
+        <ThemeToggle />
       </div>
 
       {/* Statistics Cards */}

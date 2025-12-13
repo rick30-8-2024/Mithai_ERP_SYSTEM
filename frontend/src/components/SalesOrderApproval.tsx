@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   CheckCircle,
@@ -80,7 +81,7 @@ export default function SalesOrderApproval() {
     try {
       const username = localStorage.getItem('ERP_USERNAME') || 'Admin';
       const newStatus = actionType === 'approve' ? 'Ready for Dispatch' : 'Cancelled';
-      
+
       const updatePayload: any = {
         id: selectedOrder.id,
         status: newStatus,
@@ -150,7 +151,7 @@ export default function SalesOrderApproval() {
         >
           <ArrowLeft width={20} height={20} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
           <div
             style={{
               width: 48,
@@ -172,6 +173,7 @@ export default function SalesOrderApproval() {
             </p>
           </div>
         </div>
+        <ThemeToggle />
       </div>
 
       {/* Statistics Cards */}

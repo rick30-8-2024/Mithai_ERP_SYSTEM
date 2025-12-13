@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Pause, CheckCircle, Clock, ChefHat, Package, AlertCircle, Timer, X } from "lucide-react";
+import ThemeToggle from './ThemeToggle';
 import { workOrdersApi, recipesApi, type WorkOrder, type Recipe } from "../lib/api";
 
 type StatusFilter = "all" | "scheduled" | "inProgress" | "completed";
@@ -100,13 +101,12 @@ function Modal({ open, title, onClose, children, width = 700 }: ModalProps) {
 
 export default function WorkOrders() {
   const navigate = useNavigate();
-  
+
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [showRecipeDialog, setShowRecipeDialog] = useState(false);
@@ -120,12 +120,6 @@ export default function WorkOrders() {
     const username = localStorage.getItem("ERP_USERNAME");
     return username || "Unknown";
   }, []);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
 
   // Timer for in-progress orders
   useEffect(() => {
@@ -370,62 +364,7 @@ export default function WorkOrders() {
             </div>
           </div>
 
-          <label className="switch" aria-label="Toggle light and dark mode" style={{ marginLeft: 16 }}>
-            <input
-              type="checkbox"
-              checked={theme === "dark"}
-              onChange={toggleTheme}
-              aria-checked={theme === "dark"}
-            />
-            <span className="slider">
-              <span
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  left: 6,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 16,
-                  height: 16,
-                  opacity: theme === "dark" ? 1 : 0,
-                  transition: "opacity .25s ease",
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              </span>
-              <span
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  right: 6,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 16,
-                  height: 16,
-                  opacity: theme === "light" ? 1 : 0,
-                  transition: "opacity .25s ease",
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="4" />
-                  <path
-                    d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                </svg>
-              </span>
-            </span>
-          </label>
+          <ThemeToggle />
         </section>
 
         {/* Statistics Cards */}
@@ -558,8 +497,8 @@ export default function WorkOrders() {
                 order.expected_time && order.elapsed_time
                   ? Math.min((order.elapsed_time / order.expected_time) * 100, 100)
                   : order.target_quantity > 0
-                  ? (order.actual_quantity / order.target_quantity) * 100
-                  : 0;
+                    ? (order.actual_quantity / order.target_quantity) * 100
+                    : 0;
 
               return (
                 <div
@@ -612,10 +551,10 @@ export default function WorkOrders() {
                         order.status === "In Progress" || order.status === "Paused"
                           ? formatTime(order.elapsed_time)
                           : order.status === "Completed"
-                          ? formatTime(order.elapsed_time)
-                          : order.expected_time
-                          ? `~${formatTime(order.expected_time)}`
-                          : "-"
+                            ? formatTime(order.elapsed_time)
+                            : order.expected_time
+                              ? `~${formatTime(order.expected_time)}`
+                              : "-"
                       }
                       icon={<Timer width={14} height={14} />}
                     />

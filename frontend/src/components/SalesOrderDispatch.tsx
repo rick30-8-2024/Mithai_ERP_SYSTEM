@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   Truck,
@@ -1054,7 +1055,7 @@ export default function SalesOrderDispatch() {
         >
           <ArrowLeft width={20} height={20} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
           <div style={{
             padding: 8,
             borderRadius: 10,
@@ -1070,6 +1071,7 @@ export default function SalesOrderDispatch() {
             <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>Manage order dispatch and delivery</p>
           </div>
         </div>
+        <ThemeToggle />
       </div>
 
       <div style={{ display: 'flex' }}>

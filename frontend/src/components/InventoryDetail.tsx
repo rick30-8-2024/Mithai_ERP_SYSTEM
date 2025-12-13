@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Pencil } from "lucide-react";
+import ThemeToggle from './ThemeToggle';
 import {
   inventoryApi,
   type InventoryItem,
@@ -511,7 +512,8 @@ export default function InventoryDetail() {
             </div>
           </div>
 
-          <div style={{ display: "inline-flex", gap: 8 }}>
+          <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <ThemeToggle />
             <button
               className="btn"
               onClick={() => setEditOpen(true)}

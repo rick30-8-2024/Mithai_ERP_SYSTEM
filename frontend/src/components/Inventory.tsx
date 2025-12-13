@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MoreVertical, ArrowLeft } from "lucide-react";
+import ThemeToggle from './ThemeToggle';
 import {
   inventoryApi,
   factoryTransfersApi,
@@ -160,9 +161,8 @@ export default function Inventory() {
   const [factory, setFactory] = useState<FactoryFilter>("All");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [factoryLocations, setFactoryLocations] = useState<FactoryLocation[]>([]);
-  
+
   // Get current user from localStorage
   const currentUser = useMemo(() => {
     const username = localStorage.getItem('ERP_USERNAME');
@@ -179,12 +179,6 @@ export default function Inventory() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const [selectedType, setSelectedType] = useState<InventoryCategory>("Raw Material");
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
 
   useEffect(() => {
     async function fetchFactoryLocations() {
@@ -335,61 +329,9 @@ export default function Inventory() {
               </div>
             </div>
           </div>
-          
+
           {/* Theme toggle */}
-          <label className="switch" aria-label="Toggle light and dark mode" style={{ marginLeft: 16 }}>
-            <input
-              type="checkbox"
-              checked={theme === 'dark'}
-              onChange={toggleTheme}
-              aria-checked={theme === 'dark'}
-            />
-            <span className="slider">
-              {/* Moon icon (dark) */}
-              <span
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  left: 6,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 16,
-                  height: 16,
-                  opacity: theme === 'dark' ? 1 : 0,
-                  transition: 'opacity .25s ease'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              </span>
-              {/* Sun icon (light) */}
-              <span
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  right: 6,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 16,
-                  height: 16,
-                  opacity: theme === 'light' ? 1 : 0,
-                  transition: 'opacity .25s ease'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" stroke="currentColor" strokeWidth="2" fill="none" />
-                </svg>
-              </span>
-            </span>
-          </label>
+          <ThemeToggle />
         </section>
 
         {/* Search and Filters */}
@@ -564,50 +506,50 @@ export default function Inventory() {
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <Info label="SKU" value={it.sku} />
-                  
+
                   {it.brand && <Info label="Brand" value={it.brand} />}
-                  
+
                   {it.grade && <Info label="Grade" value={it.grade} />}
-                  
+
                   {it.category === "Raw Material" && it.supplier && (
                     <Info label="Supplier" value={it.supplier} />
                   )}
-                  
+
                   {it.category === "Finished Good" && it.category_type && (
                     <Info label="Category" value={it.category_type} />
                   )}
-                  
+
                   {it.category === "Packing Material" && it.supplier && (
                     <Info label="Supplier" value={it.supplier} />
                   )}
-                  
+
                   <Info
                     label="Current Stock"
                     value={formatQty(it.current_stock, it.unit)}
                   />
-                  
+
                   <Info
                     label="Cost/Unit"
                     value={`₹${it.cost_per_unit.toFixed(2)}/${it.unit}`}
                   />
-                  
+
                   {it.packing_weight && (
                     <Info label="Packing Weight" value={it.packing_weight} />
                   )}
-                  
+
                   {it.category === "Finished Good" && it.packing_qty && (
                     <Info label="Packing Qty" value={it.packing_qty} />
                   )}
-                  
+
                   {it.factory && (
                     <Info label="Factory" value={it.factory} />
                   )}
-                  
+
                   <Info
                     label="Min/Max"
                     value={`${it.min_stock}/${it.max_stock} ${it.unit}`}
                   />
-                  
+
                   <div
                     style={{
                       display: "grid",
@@ -1026,28 +968,28 @@ function AddOrEditModal({
 
   useEffect(() => {
     if (!autoGenerateSku) return;
-    
+
     const generateSku = () => {
       const brand = values.brand?.trim() || "";
       const name = values.name?.trim() || "";
-      
+
       if (!brand && !name) return "";
-      
+
       const brandPart = brand
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "");
-      
+
       const namePart = name
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "");
-      
+
       const combined = brandPart && namePart
         ? `${brandPart}-${namePart}`
         : brandPart || namePart;
-      
+
       return combined;
     };
-    
+
     const generatedSku = generateSku();
     if (generatedSku) {
       setValues((v) => ({ ...v, sku: generatedSku }));
@@ -1057,25 +999,25 @@ function AddOrEditModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    
+
     if (!values.name.trim()) return setErr("Name is required");
     if (!values.sku.trim() && !isEdit) return setErr("SKU is required");
     if (!values.unit.trim()) return setErr("Unit is required");
-    
+
     if (values.current_stock < 0) return setErr("Current stock cannot be negative");
     if (values.min_stock < 0) return setErr("Min stock cannot be negative");
     if (values.max_stock < 0) return setErr("Max stock cannot be negative");
     if (values.max_stock < values.min_stock)
       return setErr("Max stock must be greater than or equal to min stock");
-    
+
     if (values.brand && values.brand.length > 100)
       return setErr("Brand name too long (max 100 characters)");
     if (values.grade && values.grade.length > 50)
       return setErr("Grade too long (max 50 characters)");
-    
+
     if ((values.category === "Raw Material" || values.category === "Packing Material") && values.supplier && values.supplier.length > 200)
       return setErr("Supplier name too long (max 200 characters)");
-    
+
     if (values.category === "Finished Good" && values.category_type && values.category_type.length > 100)
       return setErr("Category type too long (max 100 characters)");
 
@@ -1177,7 +1119,7 @@ function AddOrEditModal({
               style={inputStyle}
             />
           </Field>
-          
+
           {values.category === "Raw Material" && (
             <Field label="Supplier">
               <input
@@ -1188,7 +1130,7 @@ function AddOrEditModal({
               />
             </Field>
           )}
-          
+
           {values.category === "Packing Material" && (
             <Field label="Supplier">
               <input
@@ -1199,7 +1141,7 @@ function AddOrEditModal({
               />
             </Field>
           )}
-          
+
           {values.category === "Finished Good" && (
             <>
               <Field label="Category Type">
@@ -1220,7 +1162,7 @@ function AddOrEditModal({
               </Field>
             </>
           )}
-          
+
           <Field label="Unit">
             <input
               value={values.unit}

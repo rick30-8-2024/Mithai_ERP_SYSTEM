@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   FileText,
@@ -68,7 +69,7 @@ export default function GatePass() {
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(pass => 
+      filtered = filtered.filter(pass =>
         pass.dsNumber.toLowerCase().includes(term) ||
         pass.orderNumber.toLowerCase().includes(term) ||
         pass.customerCompany.toLowerCase().includes(term) ||
@@ -80,11 +81,11 @@ export default function GatePass() {
     if (dateFilter !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
+
       filtered = filtered.filter(pass => {
         const passDate = new Date(pass.createdAt);
         const passDateOnly = new Date(passDate.getFullYear(), passDate.getMonth(), passDate.getDate());
-        
+
         switch (dateFilter) {
           case 'today':
             return passDateOnly.getTime() === today.getTime();
@@ -453,11 +454,11 @@ export default function GatePass() {
 
   const downloadGatePassPDF = (pass: GatePassRecord) => {
     const htmlContent = generateDeliverySlipHTML(pass);
-    
+
     const container = document.createElement('div');
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
-    
+
     const element = container.querySelector('.delivery-slip');
     if (element) {
       const opt = {
@@ -471,7 +472,7 @@ export default function GatePass() {
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
       };
-      
+
       html2pdf().set(opt).from(element).save().then(() => {
         document.body.removeChild(container);
       });
@@ -492,11 +493,11 @@ export default function GatePass() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 12, 
-        padding: '16px 24px', 
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '16px 24px',
         borderBottom: '1px solid var(--border)',
         background: 'var(--panel)'
       }}>
@@ -515,10 +516,10 @@ export default function GatePass() {
         >
           <ArrowLeft width={20} height={20} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ 
-            padding: 8, 
-            borderRadius: 10, 
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+          <div style={{
+            padding: 8,
+            borderRadius: 10,
             background: '#e3f2fd',
             display: 'flex',
             alignItems: 'center',
@@ -531,6 +532,7 @@ export default function GatePass() {
             <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>View and download delivery gate passes</p>
           </div>
         </div>
+        <ThemeToggle />
       </div>
 
       <div style={{ padding: 24 }}>
@@ -573,24 +575,24 @@ export default function GatePass() {
           </div>
         </div>
 
-        <div style={{ 
-          display: 'flex', 
-          gap: 12, 
-          marginBottom: 24, 
+        <div style={{
+          display: 'flex',
+          gap: 12,
+          marginBottom: 24,
           flexWrap: 'wrap',
-          alignItems: 'flex-end' 
+          alignItems: 'flex-end'
         }}>
           <div style={{ position: 'relative', flex: 1, minWidth: 250 }}>
-            <Search 
-              width={16} 
-              height={16} 
-              style={{ 
-                position: 'absolute', 
-                left: 12, 
-                top: '50%', 
+            <Search
+              width={16}
+              height={16}
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
                 transform: 'translateY(-50%)',
                 color: 'var(--fg-muted)'
-              }} 
+              }}
             />
             <input
               type="text"
@@ -672,7 +674,7 @@ export default function GatePass() {
             <FileText width={48} height={48} style={{ opacity: 0.3, marginBottom: 16 }} />
             <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No Gate Passes Found</div>
             <div style={{ fontSize: 14 }}>
-              {gatePasses.length === 0 
+              {gatePasses.length === 0
                 ? 'Complete a dispatch from Sales Order Dispatch to generate gate passes.'
                 : 'Try adjusting your search or filter criteria.'}
             </div>
@@ -739,11 +741,11 @@ export default function GatePass() {
                   <span>{pass.transportService} - {pass.vehicleNumber}</span>
                 </div>
 
-                <div style={{ 
-                  marginTop: 12, 
-                  paddingTop: 12, 
+                <div style={{
+                  marginTop: 12,
+                  paddingTop: 12,
                   borderTop: '1px solid var(--border)',
-                  fontSize: 13 
+                  fontSize: 13
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <Package width={14} height={14} style={{ color: 'var(--fg-muted)' }} />
@@ -772,9 +774,9 @@ export default function GatePass() {
                   </div>
                 </div>
 
-                <div style={{ 
-                  marginTop: 12, 
-                  paddingTop: 12, 
+                <div style={{
+                  marginTop: 12,
+                  paddingTop: 12,
                   borderTop: '1px solid var(--border)',
                   display: 'flex',
                   justifyContent: 'space-between',

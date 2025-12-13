@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   Users,
@@ -42,7 +43,7 @@ function UserManagementComponent() {
 
   const roles = ['Admin', 'Production Manager', 'Kitchen Staff', 'Inventory Manager', 'Sales Manager', 'Accountant', 'Quality Inspector', 'Logistics Coordinator', 'HR Manager', 'Trainee'];
   const departments = ['IT Administration', 'Production', 'Inventory', 'Sales', 'Finance', 'Quality Assurance', 'Logistics', 'Human Resources'];
-  
+
   // Available permission cards
   const availablePermissions = [
     'Inventory', 'Recipe Management', 'Work Order', 'My Work Orders', 'Kitchen Display',
@@ -203,7 +204,7 @@ function UserManagementComponent() {
           >
             <ArrowLeft size={16} color="var(--fg)" />
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
             <Users size={24} color="var(--fg)" />
             <div>
               <h1 style={{ fontSize: '24px', fontWeight: '700', margin: 0 }}>User Management</h1>
@@ -212,6 +213,7 @@ function UserManagementComponent() {
               </p>
             </div>
           </div>
+          <ThemeToggle />
         </div>
 
         {error && (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 import {
   ArrowLeft,
   Factory,
@@ -352,15 +353,15 @@ function SendToFactory() {
 
   const filteredTransfers = transfers.filter(transfer => {
     const matchesSearch = transfer.transferNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         transfer.fromFactory.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         transfer.toFactory.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (transfer.inventoryItem?.name?.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+      transfer.fromFactory.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      transfer.toFactory.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (transfer.inventoryItem?.name?.toLowerCase().includes(searchTerm.toLowerCase()));
+
     const matchesStatus = filterByStatus === 'All' || transfer.status === filterByStatus;
-    const matchesFactory = filterByFactory === 'All' || 
-                          transfer.fromFactory === filterByFactory || 
-                          transfer.toFactory === filterByFactory;
-    
+    const matchesFactory = filterByFactory === 'All' ||
+      transfer.fromFactory === filterByFactory ||
+      transfer.toFactory === filterByFactory;
+
     return matchesSearch && matchesStatus && matchesFactory;
   });
 
@@ -436,7 +437,7 @@ function SendToFactory() {
         >
           <ArrowLeft size={16} color="currentColor" />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
           <div
             style={{
               width: 48,
@@ -458,6 +459,7 @@ function SendToFactory() {
             </p>
           </div>
         </div>
+        <ThemeToggle />
       </div>
 
       <div style={{
@@ -661,9 +663,9 @@ function SendToFactory() {
                       <h3 style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>{transfer.transferNumber}</h3>
                     </div>
                     {transfer.inventoryItem && (
-                      <div style={{ 
-                        fontSize: 14, 
-                        fontWeight: 600, 
+                      <div style={{
+                        fontSize: 14,
+                        fontWeight: 600,
                         marginBottom: 8,
                         display: 'flex',
                         alignItems: 'center',
@@ -671,11 +673,11 @@ function SendToFactory() {
                       }}>
                         <Package size={16} style={{ color: 'var(--muted)' }} />
                         <span>{transfer.inventoryItem.name}</span>
-                        <span style={{ 
-                          background: 'var(--bg)', 
-                          padding: '2px 8px', 
-                          borderRadius: 4, 
-                          fontSize: 12 
+                        <span style={{
+                          background: 'var(--bg)',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 12
                         }}>
                           {transfer.quantity} {transfer.inventoryItem.unit}
                         </span>
@@ -773,7 +775,7 @@ function SendToFactory() {
               Add New Factory Location
             </button>
           </div>
-          
+
           {loading ? (
             <div style={{
               textAlign: 'center',
@@ -929,9 +931,9 @@ function SendToFactory() {
       )}
 
       {showTransferModal && selectedTransfer && (
-        <Modal 
-          open={showTransferModal} 
-          title="Transfer Details" 
+        <Modal
+          open={showTransferModal}
+          title="Transfer Details"
           onClose={() => setShowTransferModal(false)}
           width={600}
         >
@@ -1030,9 +1032,9 @@ function SendToFactory() {
       )}
 
       {showFactoryModal && (
-        <Modal 
-          open={showFactoryModal} 
-          title="Add New Factory Location" 
+        <Modal
+          open={showFactoryModal}
+          title="Add New Factory Location"
           onClose={() => setShowFactoryModal(false)}
           width={600}
         >
@@ -1398,9 +1400,9 @@ function SendToFactory() {
                   step="0.01"
                 />
                 {selectedInventoryItem && (
-                  <span style={{ 
-                    padding: '8px 12px', 
-                    background: 'var(--bg)', 
+                  <span style={{
+                    padding: '8px 12px',
+                    background: 'var(--bg)',
                     borderRadius: 8,
                     fontSize: 14,
                     fontWeight: 600
@@ -1432,10 +1434,10 @@ function SendToFactory() {
                 }}
               >
                 <option value="">
-                  {!selectedInventoryItem 
-                    ? 'Select inventory item first' 
-                    : availableFromFactories.length === 0 
-                      ? 'No factory has this item' 
+                  {!selectedInventoryItem
+                    ? 'Select inventory item first'
+                    : availableFromFactories.length === 0
+                      ? 'No factory has this item'
                       : 'Select Factory'}
                 </option>
                 {availableFromFactories.map(f => (

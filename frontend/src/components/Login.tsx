@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 import '../App.css';
 
 function Login() {
   const navigate = useNavigate();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const { theme, toggleTheme } = useTheme();
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showSigninPassword, setShowSigninPassword] = useState(false);
@@ -17,12 +18,9 @@ function Login() {
   const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
+  }, []);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,15 +34,15 @@ function Login() {
       });
       const data = await res.json().catch(() => ({}));
       console.log('Sign In response:', data, 'status:', res.status);
-      
+
       if (res.ok) {
         localStorage.setItem('ERP_USERNAME', signin.username);
         localStorage.setItem('ERP_PASSWORD', signin.password);
         localStorage.setItem('ERP_USER_PERMISSIONS', JSON.stringify(data.user?.permissions || []));
         localStorage.setItem('ERP_USER_ROLE', data.user?.role || '');
-        
+
         setMessage({ type: 'success', text: data.message || 'Login successful!' });
-        
+
         setTimeout(() => {
           navigate('/dashboard');
         }, 1000);
@@ -71,7 +69,7 @@ function Login() {
       });
       const data = await res.json().catch(() => ({}));
       console.log('Sign Up response:', data, 'status:', res.status);
-      
+
       if (res.ok) {
         setMessage({ type: 'success', text: data.message || 'Account created successfully!' });
         setSignup({ username: '', password: '', role: 'user' });
@@ -141,11 +139,10 @@ function Login() {
                 color: theme === 'dark'
                   ? (message.type === 'success' ? '#7bc67e' : '#f57676')
                   : (message.type === 'success' ? '#155724' : '#721c24'),
-                border: `1px solid ${
-                  theme === 'dark'
+                border: `1px solid ${theme === 'dark'
                     ? (message.type === 'success' ? '#2d5f2e' : '#6e2c2c')
                     : (message.type === 'success' ? '#c3e6cb' : '#f5c6cb')
-                }`,
+                  }`,
                 fontSize: '14px',
                 fontWeight: 500,
               }}
