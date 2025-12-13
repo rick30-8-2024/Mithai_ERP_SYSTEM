@@ -33,7 +33,7 @@ function CustomerManagementComponent() {
     contact_persons: [''] as string[],
     emails: [''] as string[],
     phones: [''] as string[],
-    addresses: [{ address: '', city: '', state: '', pincode: '' }] as { address: string; city?: string; state?: string; pincode?: string }[],
+    addresses: [{ address: '', city: '', state: '', pincode: '', transport: '' }] as { address: string; city?: string; state?: string; pincode?: string; transport?: string }[],
     gstin: '',
     customer_type: 'N' as 'A' | 'B' | 'C' | 'D' | 'N',
     status: 'Active' as 'Active' | 'Inactive' | 'Blocked',
@@ -75,7 +75,7 @@ function CustomerManagementComponent() {
 
   const handleCreateCustomer = async () => {
     if (isSubmitting) return;
-    
+
     try {
       setIsSubmitting(true);
       setError('');
@@ -110,7 +110,7 @@ function CustomerManagementComponent() {
 
   const handleUpdateCustomer = async () => {
     if (!editingCustomer || isSubmitting) return;
-    
+
     try {
       setIsSubmitting(true);
       setError('');
@@ -146,7 +146,7 @@ function CustomerManagementComponent() {
       contact_persons: [''],
       emails: [''],
       phones: [''],
-      addresses: [{ address: '', city: '', state: '', pincode: '' }],
+      addresses: [{ address: '', city: '', state: '', pincode: '', transport: '' }],
       gstin: '',
       customer_type: 'N',
       status: 'Active',
@@ -164,7 +164,7 @@ function CustomerManagementComponent() {
       contact_persons: customer.contactPersons.length > 0 ? customer.contactPersons : [''],
       emails: customer.emails.length > 0 ? customer.emails : [''],
       phones: customer.phones.length > 0 ? customer.phones : [''],
-      addresses: customer.addresses.length > 0 ? customer.addresses : [{ address: '', city: '', state: '', pincode: '' }],
+      addresses: customer.addresses.length > 0 ? customer.addresses : [{ address: '', city: '', state: '', pincode: '', transport: '' }],
       gstin: customer.gstin || '',
       customer_type: customer.customerType,
       status: customer.status,
@@ -752,7 +752,7 @@ function CustomerManagementComponent() {
                     </label>
                     {formData.addresses.length < 5 && (
                       <button
-                        onClick={() => setFormData({ ...formData, addresses: [...formData.addresses, { address: '', city: '', state: '', pincode: '' }] })}
+                        onClick={() => setFormData({ ...formData, addresses: [...formData.addresses, { address: '', city: '', state: '', pincode: '', transport: '' }] })}
                         style={{
                           padding: '4px 8px',
                           background: 'var(--fg)',
@@ -856,6 +856,25 @@ function CustomerManagementComponent() {
                           }}
                           placeholder="Pincode"
                           style={{
+                            padding: '8px 12px',
+                            background: 'var(--panel)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginTop: '8px' }}>
+                        <input
+                          type="text"
+                          value={addr.transport || ''}
+                          onChange={(e) => {
+                            const newAddresses = [...formData.addresses];
+                            newAddresses[idx] = { ...newAddresses[idx], transport: e.target.value };
+                            setFormData({ ...formData, addresses: newAddresses });
+                          }}
+                          placeholder="Transport Service (optional)"
+                          style={{
+                            width: '94%',
                             padding: '8px 12px',
                             background: 'var(--panel)',
                             border: '1px solid var(--border)',

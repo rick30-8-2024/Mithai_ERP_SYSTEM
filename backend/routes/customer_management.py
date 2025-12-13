@@ -32,7 +32,7 @@ async def _row_to_customer(row, pool) -> dict:
         row["id"]
     )
     addresses_rows = await pool.fetch(
-        "SELECT address, city, state, pincode, is_primary FROM customer_addresses WHERE customer_id = $1 ORDER BY is_primary DESC, created_date ASC",
+        "SELECT address, city, state, pincode, transport, is_primary FROM customer_addresses WHERE customer_id = $1 ORDER BY is_primary DESC, created_date ASC",
         row["id"]
     )
     
@@ -48,6 +48,7 @@ async def _row_to_customer(row, pool) -> dict:
                 "city": r.get("city"),
                 "state": r.get("state"),
                 "pincode": r.get("pincode"),
+                "transport": r.get("transport"),
             }
             for r in addresses_rows
         ],
@@ -83,6 +84,7 @@ class CustomerAddress(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
+    transport: Optional[str] = None
 
 class CreateRequest(BaseModel):
     company_name: str
@@ -194,7 +196,8 @@ async def list_customers(req: ListRequest):
                     'address', address,
                     'city', city,
                     'state', state,
-                    'pincode', pincode
+                    'pincode', pincode,
+                    'transport', transport
                 ) ORDER BY is_primary DESC, created_date ASC
             ) as addresses
             FROM customer_addresses
@@ -330,8 +333,8 @@ async def create_customer(req: CreateRequest):
                 for idx, addr in enumerate(req.addresses):
                     if addr.address.strip():
                         await conn.execute(
-                            "INSERT INTO customer_addresses (customer_id, address, city, state, pincode, is_primary) VALUES ($1, $2, $3, $4, $5, $6)",
-                            customer_id, addr.address, addr.city, addr.state, addr.pincode, idx == 0
+                            "INSERT INTO customer_addresses (customer_id, address, city, state, pincode, transport, is_primary) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                            customer_id, addr.address, addr.city, addr.state, addr.pincode, addr.transport, idx == 0
                         )
 
                 return {
@@ -438,8 +441,8 @@ async def update_customer(req: UpdateRequest):
                     for idx, addr in enumerate(req.addresses[:5]):
                         if addr.address.strip():
                             await conn.execute(
-                                "INSERT INTO customer_addresses (customer_id, address, city, state, pincode, is_primary) VALUES ($1, $2, $3, $4, $5, $6)",
-                                req.id, addr.address, addr.city, addr.state, addr.pincode, idx == 0
+                                "INSERT INTO customer_addresses (customer_id, address, city, state, pincode, transport, is_primary) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                                req.id, addr.address, addr.city, addr.state, addr.pincode, addr.transport, idx == 0
                             )
 
                 return {"success": True, "message": "Customer updated successfully"}
@@ -574,3 +577,88 @@ async def get_by_company(req: GetByCompanyRequest):
         "phones": list(row["phones"]) if row["phones"] else [],
         "addresses": list(row["addresses"]) if row["addresses"] else []
     }
+
+
+@customer_management_router.post("/get-addresses-with-transport")
+async def get_addresses_with_transport(req: GetByCompanyRequest):
+    """Get customer addresses with transport info by company name for dispatch pre-fill"""
+    pool = await get_db_pool()
+    
+    query = """
+        SELECT ca.address, ca.city, ca.state, ca.pincode, ca.transport
+        FROM customer_addresses ca
+        JOIN customers c ON c.id = ca.customer_id
+        WHERE c.company_name = $1 AND c.status = 'Active'
+        ORDER BY ca.is_primary DESC, ca.created_date ASC
+    """
+    
+    rows = await pool.fetch(query, req.company_name)
+    
+    addresses = [
+        {
+            "address": row["address"],
+            "city": row.get("city"),
+            "state": row.get("state"),
+            "pincode": row.get("pincode"),
+            "transport": row.get("transport"),
+        }
+        for row in rows
+    ]
+    
+    return {"addresses": addresses}
+
+
+class GetTransportByAddressRequest(BaseModel):
+    company_name: str
+    delivery_address: str
+
+
+@customer_management_router.post("/get-transport-for-address")
+async def get_transport_for_address(req: GetTransportByAddressRequest):
+    """Get transport service for a specific delivery address"""
+    pool = await get_db_pool()
+    
+    # First, get all addresses for this customer
+    query = """
+        SELECT ca.address, ca.city, ca.state, ca.pincode, ca.transport
+        FROM customer_addresses ca
+        JOIN customers c ON c.id = ca.customer_id
+        WHERE c.company_name = $1 AND c.status = 'Active'
+        ORDER BY ca.is_primary DESC, ca.created_date ASC
+    """
+    
+    rows = await pool.fetch(query, req.company_name)
+    
+    # Try to find address that matches the delivery address
+    delivery_lower = req.delivery_address.lower().strip()
+    
+    for row in rows:
+        # Build full address string for comparison
+        addr_parts = [row["address"]]
+        if row.get("city"):
+            addr_parts.append(row["city"])
+        if row.get("state"):
+            addr_parts.append(row["state"])
+        if row.get("pincode"):
+            addr_parts.append(row["pincode"])
+        
+        full_address = ", ".join(addr_parts).lower()
+        
+        # Check if delivery address contains this address or vice versa
+        if delivery_lower in full_address or full_address in delivery_lower:
+            return {
+                "found": True,
+                "transport": row.get("transport") or "",
+                "matched_address": ", ".join(addr_parts)
+            }
+        
+        # Also check if just the street address matches
+        if row["address"].lower().strip() in delivery_lower:
+            return {
+                "found": True,
+                "transport": row.get("transport") or "",
+                "matched_address": ", ".join(addr_parts)
+            }
+    
+    # No match found
+    return {"found": False, "transport": "", "matched_address": ""}

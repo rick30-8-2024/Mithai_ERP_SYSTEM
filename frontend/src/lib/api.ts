@@ -1117,6 +1117,7 @@ export interface CustomerAddress {
   city?: string;
   state?: string;
   pincode?: string;
+  transport?: string;
 }
 
 export interface CustomerManagement {
@@ -1240,6 +1241,20 @@ async function getCustomersByCompany(companyName: string) {
   });
 }
 
+async function getAddressesWithTransport(companyName: string) {
+  return post<{
+    addresses: Array<{
+      address: string;
+      city?: string;
+      state?: string;
+      pincode?: string;
+      transport?: string;
+    }>;
+  }>("/api/customer-management/get-addresses-with-transport", {
+    company_name: companyName,
+  });
+}
+
 export const customerManagementApi = {
   list: listCustomerManagement,
   get: getCustomerManagement,
@@ -1248,6 +1263,17 @@ export const customerManagementApi = {
   delete: deleteCustomerManagement,
   searchCompanies: searchCompanies,
   getByCompany: getCustomersByCompany,
+  getAddressesWithTransport: getAddressesWithTransport,
+  getTransportForAddress: async (companyName: string, deliveryAddress: string) => {
+    return post<{
+      found: boolean;
+      transport: string;
+      matched_address: string;
+    }>("/api/customer-management/get-transport-for-address", {
+      company_name: companyName,
+      delivery_address: deliveryAddress,
+    });
+  },
 };
 
 /* Dispatch types */
@@ -1371,7 +1397,7 @@ async function getDispatchOrders(filters?: {
 
   const queryString = new URLSearchParams(params).toString();
   const url = `/api/dispatch-orders${queryString ? `?${queryString}` : ''}`;
-  
+
   const res = await fetch(`${BASE_URL}${url}`, {
     method: "GET",
     headers: {
@@ -1431,7 +1457,7 @@ async function getFinishedGoods(itemNames?: string[]) {
 
   const queryString = new URLSearchParams(params).toString();
   const url = `/api/finished-goods${queryString ? `?${queryString}` : ''}`;
-  
+
   const res = await fetch(`${BASE_URL}${url}`, {
     method: "GET",
     headers: {

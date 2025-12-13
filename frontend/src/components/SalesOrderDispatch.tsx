@@ -134,6 +134,7 @@ interface LogisticsEntry {
   driverContact: string;
   comments: string;
   itemAllocations: Record<string, number>;
+  isTransportPreFilled: boolean;
 }
 
 interface DispatchedItemInfo {
@@ -228,15 +229,15 @@ export default function SalesOrderDispatch() {
   };
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
+    const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customerCompany.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+
     const matchesStatus = filterStatus === 'All' || order.status === filterStatus;
     const matchesPriority = filterPriority === 'All' || order.priority === filterPriority;
-    
+
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
@@ -331,7 +332,7 @@ export default function SalesOrderDispatch() {
     }
   };
 
-  const handleCompleteDispatch = (order: DispatchOrder) => {
+  const handleCompleteDispatch = async (order: DispatchOrder) => {
     setSelectedOrder(order);
     setCurrentTab('inventory');
 
@@ -356,15 +357,34 @@ export default function SalesOrderDispatch() {
       initialAllocations[item.id] = 0;
     });
 
+    // Pre-fill transport from customer data matching delivery address
+    let prefilledTransport = '';
+    let isPreFilled = false;
+    try {
+      if (order.deliveryAddress) {
+        const transportData = await customerManagementApi.getTransportForAddress(
+          order.customerCompany,
+          order.deliveryAddress
+        );
+        if (transportData.found && transportData.transport) {
+          prefilledTransport = transportData.transport;
+          isPreFilled = true;
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch customer transport:', e);
+    }
+
     setLogisticsEntries([{
       id: 'logistics-0',
-      transportService: '',
+      transportService: prefilledTransport,
       otherTransportService: '',
       vehicleNumber: '',
       driverName: '',
       driverContact: '',
       comments: '',
-      itemAllocations: initialAllocations
+      itemAllocations: initialAllocations,
+      isTransportPreFilled: isPreFilled
     }]);
 
     setShowDispatchDialog(true);
@@ -374,7 +394,7 @@ export default function SalesOrderDispatch() {
     setItemInventories(prev => {
       const currentInventory = prev[itemId];
       if (!currentInventory) return prev;
-      
+
       return {
         ...prev,
         [itemId]: {
@@ -395,12 +415,12 @@ export default function SalesOrderDispatch() {
 
   const addLogisticsEntry = () => {
     if (!selectedOrder) return;
-    
+
     const initialAllocations: Record<string, number> = {};
     selectedOrder.items.forEach(item => {
       initialAllocations[item.id] = 0;
     });
-    
+
     const newEntry: LogisticsEntry = {
       id: `logistics-${logisticsEntries.length}`,
       transportService: '',
@@ -409,9 +429,10 @@ export default function SalesOrderDispatch() {
       driverName: '',
       driverContact: '',
       comments: '',
-      itemAllocations: initialAllocations
+      itemAllocations: initialAllocations,
+      isTransportPreFilled: false
     };
-    
+
     setLogisticsEntries([...logisticsEntries, newEntry]);
   };
 
@@ -421,91 +442,88 @@ export default function SalesOrderDispatch() {
   };
 
   const updateLogisticsEntry = (entryId: string, field: keyof LogisticsEntry, value: any) => {
-    setLogisticsEntries(logisticsEntries.map(entry => 
-      entry.id === entryId 
+    setLogisticsEntries(logisticsEntries.map(entry =>
+      entry.id === entryId
         ? { ...entry, [field]: value }
         : entry
     ));
   };
 
   const updateItemAllocation = (entryId: string, itemId: string, quantity: number) => {
-    setLogisticsEntries(logisticsEntries.map(entry => 
-      entry.id === entryId 
-        ? { 
-            ...entry, 
-            itemAllocations: {
-              ...entry.itemAllocations,
-              [itemId]: quantity
-            }
+    setLogisticsEntries(logisticsEntries.map(entry =>
+      entry.id === entryId
+        ? {
+          ...entry,
+          itemAllocations: {
+            ...entry.itemAllocations,
+            [itemId]: quantity
           }
+        }
         : entry
     ));
   };
 
   const getTotalAllocatedForItem = (itemId: string): number => {
-    return logisticsEntries.reduce((sum, entry) => 
+    return logisticsEntries.reduce((sum, entry) =>
       sum + (entry.itemAllocations[itemId] || 0), 0
     );
   };
 
   const isInventoryValid = () => {
     if (!selectedOrder) return false;
-    
+
     let hasAtLeastOneAssignment = false;
-    
+
     for (const item of selectedOrder.items) {
       const alreadyDispatched = item.dispatchedQuantity || 0;
       const remainingToDispatch = item.quantity - alreadyDispatched;
-      
+
       if (remainingToDispatch <= 0) continue;
-      
+
       const totalAssigned = getTotalAssignedQuantity(item.id);
       const inventory = itemInventories[item.id];
-      
+
       if (!inventory || !inventory.skuAssignments[0]?.sku) return false;
-      
+
       if (totalAssigned > remainingToDispatch) return false;
-      
+
       if (totalAssigned > 0) {
         hasAtLeastOneAssignment = true;
       }
     }
-    
+
     return hasAtLeastOneAssignment;
   };
 
   const isLogisticsValid = () => {
     if (!selectedOrder) return false;
-    
+
     const allEntriesValid = logisticsEntries.every(entry => {
-      const hasTransport = entry.transportService === 'Other' 
-        ? entry.otherTransportService.trim() !== '' 
-        : entry.transportService !== '';
-      const hasVehicle = entry.vehicleNumber.trim() !== '';
+      const hasTransport = entry.transportService.trim() !== '';
       const hasAllocations = Object.values(entry.itemAllocations).some(qty => qty > 0);
-      return hasTransport && hasVehicle && hasAllocations;
+      return hasTransport && hasAllocations;
     });
-    
+
     if (!allEntriesValid) return false;
-    
+
     let hasAtLeastOneAllocation = false;
-    
+
     for (const item of selectedOrder.items) {
       const alreadyDispatched = item.dispatchedQuantity || 0;
       const remainingToDispatch = item.quantity - alreadyDispatched;
-      
+
       if (remainingToDispatch <= 0) continue;
-      
+
       const totalAssigned = getTotalAssignedQuantity(item.id);
       const totalAllocated = getTotalAllocatedForItem(item.id);
-      
+
       if (totalAllocated > totalAssigned) return false;
-      
+
       if (totalAllocated > 0) {
         hasAtLeastOneAllocation = true;
       }
     }
-    
+
     return hasAtLeastOneAllocation;
   };
 
@@ -836,11 +854,11 @@ export default function SalesOrderDispatch() {
 
   const downloadDeliverySlipAsPDF = (info: DispatchedOrderInfo) => {
     const htmlContent = generateDeliverySlipHTML(info);
-    
+
     const container = document.createElement('div');
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
-    
+
     const element = container.querySelector('.delivery-slip');
     if (element) {
       const opt = {
@@ -854,7 +872,7 @@ export default function SalesOrderDispatch() {
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
       };
-      
+
       html2pdf().set(opt).from(element).save().then(() => {
         document.body.removeChild(container);
       });
@@ -872,7 +890,7 @@ export default function SalesOrderDispatch() {
     setIsDispatching(true);
     try {
       const username = localStorage.getItem('ERP_USERNAME') || 'User';
-      
+
       const inventory_assignments = Object.entries(itemInventories).map(([itemId, inventory]) => ({
         item_id: itemId,
         sku_assignments: inventory.skuAssignments
@@ -970,7 +988,7 @@ export default function SalesOrderDispatch() {
       setShowDownloadCard(true);
       setShowDispatchDialog(false);
       setSelectedOrder(null);
-      
+
       setItemInventories({});
       setLogisticsEntries([]);
       loadData();
@@ -997,8 +1015,8 @@ export default function SalesOrderDispatch() {
       .forEach(order => {
         order.items.forEach(item => neededProducts.add(item.name));
       });
-    return Array.from(neededProducts).some(product => 
-      fg.name.toLowerCase().includes(product.toLowerCase()) || 
+    return Array.from(neededProducts).some(product =>
+      fg.name.toLowerCase().includes(product.toLowerCase()) ||
       product.toLowerCase().includes(fg.name.toLowerCase())
     );
   });
@@ -1013,11 +1031,11 @@ export default function SalesOrderDispatch() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 12, 
-        padding: '16px 24px', 
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '16px 24px',
         borderBottom: '1px solid var(--border)',
         background: 'var(--panel)'
       }}>
@@ -1037,9 +1055,9 @@ export default function SalesOrderDispatch() {
           <ArrowLeft width={20} height={20} />
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ 
-            padding: 8, 
-            borderRadius: 10, 
+          <div style={{
+            padding: 8,
+            borderRadius: 10,
             background: '#e0f2f1',
             display: 'flex',
             alignItems: 'center',
@@ -1056,9 +1074,9 @@ export default function SalesOrderDispatch() {
 
       <div style={{ display: 'flex' }}>
         {leftSidebarOpen && (
-          <div style={{ 
-            width: 250, 
-            borderRight: '1px solid var(--border)', 
+          <div style={{
+            width: 250,
+            borderRight: '1px solid var(--border)',
             background: 'var(--panel)',
             padding: 16,
             overflowY: 'auto',
@@ -1084,7 +1102,7 @@ export default function SalesOrderDispatch() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {workOrders.map(wo => (
-                <div 
+                <div
                   key={wo.id}
                   style={{
                     border: '1px solid var(--border)',
@@ -1124,7 +1142,7 @@ export default function SalesOrderDispatch() {
                     </div>
                   </div>
 
-                  <div style={{ 
+                  <div style={{
                     marginTop: 8,
                     padding: '2px 8px',
                     borderRadius: 6,
@@ -1191,16 +1209,16 @@ export default function SalesOrderDispatch() {
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
             <div style={{ position: 'relative', flex: 1, minWidth: 250 }}>
-              <Search 
-                width={16} 
-                height={16} 
-                style={{ 
-                  position: 'absolute', 
-                  left: 12, 
-                  top: '50%', 
+              <Search
+                width={16}
+                height={16}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
                   transform: 'translateY(-50%)',
                   color: 'var(--fg-muted)'
-                }} 
+                }}
               />
               <input
                 type="text"
@@ -1249,7 +1267,7 @@ export default function SalesOrderDispatch() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: 16 }}>
             {filteredOrders.map(order => (
-              <div 
+              <div
                 key={order.id}
                 style={{
                   border: '1px solid var(--border)',
@@ -1344,8 +1362,8 @@ export default function SalesOrderDispatch() {
                 </div>
 
                 {order.trackingNumber && (
-                  <div style={{ 
-                    paddingTop: 12, 
+                  <div style={{
+                    paddingTop: 12,
                     borderTop: '1px solid var(--border)',
                     marginBottom: 12,
                     fontSize: 12
@@ -1364,8 +1382,8 @@ export default function SalesOrderDispatch() {
                 )}
 
                 {order.onHoldReason && (
-                  <div style={{ 
-                    paddingTop: 12, 
+                  <div style={{
+                    paddingTop: 12,
                     borderTop: '1px solid var(--border)',
                     marginBottom: 12
                   }}>
@@ -1381,8 +1399,8 @@ export default function SalesOrderDispatch() {
                 )}
 
                 {order.specialInstructions && (
-                  <div style={{ 
-                    paddingTop: 12, 
+                  <div style={{
+                    paddingTop: 12,
                     borderTop: '1px solid var(--border)',
                     marginBottom: 12,
                     fontSize: 12
@@ -1488,9 +1506,9 @@ export default function SalesOrderDispatch() {
         </div>
 
         {rightSidebarOpen && (
-          <div style={{ 
-            width: 250, 
-            borderLeft: '1px solid var(--border)', 
+          <div style={{
+            width: 250,
+            borderLeft: '1px solid var(--border)',
             background: 'var(--panel)',
             padding: 16,
             overflowY: 'auto',
@@ -1516,7 +1534,7 @@ export default function SalesOrderDispatch() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {relevantFinishedGoods.map(fg => (
-                <div 
+                <div
                   key={fg.id}
                   style={{
                     border: '1px solid var(--border)',
@@ -1627,7 +1645,7 @@ export default function SalesOrderDispatch() {
               <X width={18} height={18} />
             </button>
           </div>
-          
+
           <div style={{ fontSize: 13, marginBottom: 16 }}>
             <div style={{ marginBottom: 4 }}>
               <span style={{ color: 'var(--fg-muted)' }}>Order: </span>
@@ -1797,7 +1815,7 @@ export default function SalesOrderDispatch() {
                     const inventory = itemInventories[item.id];
                     const sku = inventory?.skuAssignments[0]?.sku || 'N/A';
                     const quantity = inventory?.skuAssignments[0]?.quantity || 0;
-                    
+
                     const matchingFG = finishedGoods.find(fg => fg.sku === sku);
 
                     return (
@@ -1921,29 +1939,45 @@ export default function SalesOrderDispatch() {
                             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
                               Transport Service *
                             </label>
-                            <select
-                              value={entry.transportService}
-                              onChange={(e) => updateLogisticsEntry(entry.id, 'transportService', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                border: '1.5px solid var(--border)',
-                                borderRadius: 8,
-                                fontSize: 13,
-                                background: 'var(--panel)',
-                                boxSizing: 'border-box'
-                              }}
-                            >
-                              <option value="">Select Service</option>
-                              {transportServices.map(s => (
-                                <option key={s} value={s}>{s}</option>
-                              ))}
-                            </select>
+                            {entry.isTransportPreFilled ? (
+                              // Read-only display when pre-filled from customer data
+                              <div
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  border: '1.5px solid var(--border)',
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  background: '#e8f5e9',
+                                  color: '#2e7d32',
+                                  fontWeight: 600,
+                                  boxSizing: 'border-box'
+                                }}
+                              >
+                                {entry.transportService || 'Not configured'}
+                              </div>
+                            ) : (
+                              // Text input when not pre-filled
+                              <input
+                                type="text"
+                                value={entry.transportService}
+                                onChange={(e) => updateLogisticsEntry(entry.id, 'transportService', e.target.value)}
+                                placeholder="Enter transport service"
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  border: '1.5px solid var(--border)',
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  boxSizing: 'border-box'
+                                }}
+                              />
+                            )}
                           </div>
 
                           <div>
                             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                              Vehicle Number *
+                              Vehicle Number
                             </label>
                             <input
                               type="text"
@@ -1961,28 +1995,6 @@ export default function SalesOrderDispatch() {
                             />
                           </div>
                         </div>
-
-                        {entry.transportService === 'Other' && (
-                          <div>
-                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                              Other Service Name *
-                            </label>
-                            <input
-                              type="text"
-                              value={entry.otherTransportService}
-                              onChange={(e) => updateLogisticsEntry(entry.id, 'otherTransportService', e.target.value)}
-                              placeholder="Enter service name"
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                border: '1.5px solid var(--border)',
-                                borderRadius: 8,
-                                fontSize: 13,
-                                boxSizing: 'border-box'
-                              }}
-                            />
-                          </div>
-                        )}
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                           <div>
@@ -2035,7 +2047,7 @@ export default function SalesOrderDispatch() {
                           {selectedOrder.items.map(item => {
                             const totalAssigned = getTotalAssignedQuantity(item.id);
                             const currentAllocation = entry.itemAllocations[item.id] || 0;
-                            
+
                             return (
                               <div
                                 key={item.id}
@@ -2135,7 +2147,7 @@ export default function SalesOrderDispatch() {
                     {selectedOrder.items.map(item => {
                       const totalAssigned = getTotalAssignedQuantity(item.id);
                       const totalAllocated = getTotalAllocatedForItem(item.id);
-                      
+
                       return (
                         <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>{item.name}:</span>
@@ -2150,10 +2162,10 @@ export default function SalesOrderDispatch() {
               </div>
             )}
 
-            <div style={{ 
-              display: 'flex', 
-              gap: 12, 
-              justifyContent: 'flex-end', 
+            <div style={{
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'flex-end',
               marginTop: 20,
               paddingTop: 16,
               borderTop: '1px solid var(--border)'

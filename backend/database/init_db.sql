@@ -419,6 +419,7 @@ CREATE TABLE IF NOT EXISTS customer_addresses (
     city TEXT,
     state TEXT,
     pincode TEXT,
+    transport TEXT,
     is_primary BOOLEAN NOT NULL DEFAULT FALSE,
     created_date TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

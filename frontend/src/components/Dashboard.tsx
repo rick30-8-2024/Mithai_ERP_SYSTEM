@@ -36,7 +36,6 @@ const DASHBOARD_DATA = {
     "Gate Pass/Inward": ["Entry management"],
     "User Management": ["Manage users"],
     "Accounting": ["Financial records"],
-    "Logistics & Routes": ["Delivery planning"],
     "Quality Check": ["Quality control"],
     "Customer Management": ["Manage customers"],
     "Payment Tracking": ["Track payments"],
