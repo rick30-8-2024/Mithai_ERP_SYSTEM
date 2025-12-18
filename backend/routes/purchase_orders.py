@@ -148,6 +148,50 @@ class DeleteRequest(BaseModel):
     id: str
 
 
+@purchase_orders_router.get("/generate-number")
+async def generate_po_number():
+    """
+    Generate the next purchase order number in format PO-YYYY-XXX
+    where YYYY is the current year and XXX starts at 001.
+    When the year changes, the counter resets to 001.
+    """
+    pool = await get_db_pool()
+    current_year = datetime.now().year
+    prefix = f"PO-{current_year}-"
+    
+    try:
+        async with pool.acquire() as conn:
+            # Find the highest order number for the current year
+            query = """
+                SELECT po_number FROM purchase_orders
+                WHERE po_number LIKE $1
+                ORDER BY po_number DESC
+                LIMIT 1
+            """
+            row = await conn.fetchrow(query, f"{prefix}%")
+            
+            if row:
+                # Extract the numeric part and increment
+                last_number = row["po_number"]
+                try:
+                    # Get the numeric suffix after PO-YYYY-
+                    numeric_part = last_number.split("-")[-1]
+                    next_num = int(numeric_part) + 1
+                except (ValueError, IndexError):
+                    next_num = 1
+            else:
+                next_num = 1
+            
+            # Format with minimum 3 digits
+            formatted_num = str(next_num).zfill(3)
+            new_po_number = f"{prefix}{formatted_num}"
+            
+            return {"po_number": new_po_number}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate PO number: {str(e)}")
+
+
 @purchase_orders_router.post("/list")
 async def list_purchase_orders(req: ListRequest):
     pool = await get_db_pool()

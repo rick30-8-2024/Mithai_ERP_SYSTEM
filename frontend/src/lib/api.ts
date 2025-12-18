@@ -622,12 +622,39 @@ async function deletePurchaseOrder(id: string) {
   return post<{ success: boolean; message: string }>("/api/purchase-orders/delete", { id });
 }
 
+async function generatePONumber() {
+  const res = await fetch(`${BASE_URL}/api/purchase-orders/generate-number`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text as any;
+  }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.detail || data.message || data.error)) ||
+      `HTTP ${res.status}`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+
+  return data as { po_number: string };
+}
+
 export const purchaseOrdersApi = {
   list: listPurchaseOrders,
   get: getPurchaseOrder,
   create: createPurchaseOrder,
   update: updatePurchaseOrder,
   delete: deletePurchaseOrder,
+  generatePONumber: generatePONumber,
 };
 
 /* Users API */
@@ -994,12 +1021,39 @@ async function deleteSalesOrder(id: string) {
   return post<{ success: boolean; message: string }>("/api/sales-orders/delete", { id });
 }
 
+async function generateOrderNumber() {
+  const res = await fetch(`${BASE_URL}/api/sales-orders/generate-number`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text as any;
+  }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.detail || data.message || data.error)) ||
+      `HTTP ${res.status}`;
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+
+  return data as { order_number: string };
+}
+
 export const salesOrdersApi = {
   list: listSalesOrders,
   get: getSalesOrder,
   create: createSalesOrder,
   update: updateSalesOrder,
   delete: deleteSalesOrder,
+  generateOrderNumber: generateOrderNumber,
 };
 
 /* User Management types */

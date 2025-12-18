@@ -498,33 +498,26 @@ export default function SalesOrderDispatch() {
   const isLogisticsValid = () => {
     if (!selectedOrder) return false;
 
+    // Only check that all entries have a transport service
     const allEntriesValid = logisticsEntries.every(entry => {
       const hasTransport = entry.transportService.trim() !== '';
-      const hasAllocations = Object.values(entry.itemAllocations).some(qty => qty > 0);
-      return hasTransport && hasAllocations;
+      return hasTransport;
     });
 
     if (!allEntriesValid) return false;
 
-    let hasAtLeastOneAllocation = false;
+    // Check that at least one item has been assigned quantity in Inventory Assignment
+    let hasAtLeastOneAssignment = false;
 
     for (const item of selectedOrder.items) {
-      const alreadyDispatched = item.dispatchedQuantity || 0;
-      const remainingToDispatch = item.quantity - alreadyDispatched;
-
-      if (remainingToDispatch <= 0) continue;
-
       const totalAssigned = getTotalAssignedQuantity(item.id);
-      const totalAllocated = getTotalAllocatedForItem(item.id);
-
-      if (totalAllocated > totalAssigned) return false;
-
-      if (totalAllocated > 0) {
-        hasAtLeastOneAllocation = true;
+      if (totalAssigned > 0) {
+        hasAtLeastOneAssignment = true;
+        break;
       }
     }
 
-    return hasAtLeastOneAllocation;
+    return hasAtLeastOneAssignment;
   };
 
   const generateDeliverySlipHTML = (info: DispatchedOrderInfo): string => {
@@ -2040,57 +2033,6 @@ export default function SalesOrderDispatch() {
                         </div>
                       </div>
 
-                      <div style={{ marginBottom: 12 }}>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                          Item Allocations
-                        </label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {selectedOrder.items.map(item => {
-                            const totalAssigned = getTotalAssignedQuantity(item.id);
-                            const currentAllocation = entry.itemAllocations[item.id] || 0;
-
-                            return (
-                              <div
-                                key={item.id}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  padding: 8,
-                                  background: 'var(--panel)',
-                                  borderRadius: 6,
-                                  gap: 12
-                                }}
-                              >
-                                <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
-                                  <div style={{ fontWeight: 600 }}>{item.name}</div>
-                                  <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
-                                    Assigned: {totalAssigned}
-                                  </div>
-                                </div>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={totalAssigned}
-                                  value={currentAllocation || ''}
-                                  onChange={(e) => updateItemAllocation(entry.id, item.id, parseInt(e.target.value) || 0)}
-                                  placeholder="0"
-                                  style={{
-                                    width: 80,
-                                    flexShrink: 0,
-                                    padding: '6px 10px',
-                                    border: '1.5px solid var(--border)',
-                                    borderRadius: 6,
-                                    fontSize: 13,
-                                    textAlign: 'right',
-                                    boxSizing: 'border-box'
-                                  }}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
 
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
@@ -2187,7 +2129,25 @@ export default function SalesOrderDispatch() {
               </button>
               {currentTab === 'inventory' ? (
                 <button
-                  onClick={() => setCurrentTab('logistics')}
+                  onClick={() => {
+                    // Auto-populate item allocations from inventory assignments
+                    if (selectedOrder && logisticsEntries.length > 0) {
+                      const updatedEntries = logisticsEntries.map((entry, index) => {
+                        if (index === 0) {
+                          // Assign all inventory quantities to the first logistics entry
+                          const newAllocations: { [itemId: string]: number } = {};
+                          selectedOrder.items.forEach(item => {
+                            const totalAssigned = getTotalAssignedQuantity(item.id);
+                            newAllocations[item.id] = totalAssigned;
+                          });
+                          return { ...entry, itemAllocations: newAllocations };
+                        }
+                        return entry;
+                      });
+                      setLogisticsEntries(updatedEntries);
+                    }
+                    setCurrentTab('logistics');
+                  }}
                   disabled={!isInventoryValid()}
                   style={{
                     padding: '10px 20px',

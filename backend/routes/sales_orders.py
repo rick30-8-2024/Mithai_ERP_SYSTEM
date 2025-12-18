@@ -165,6 +165,48 @@ class DeleteRequest(BaseModel):
     id: str
 
 
+@sales_orders_router.get("/generate-number")
+async def generate_order_number():
+    """
+    Generate the next sales order number in format SO-YYYY-XXX
+    where YYYY is the current year and XXX starts at 001.
+    """
+    pool = await get_db_pool()
+    current_year = datetime.now().year
+    prefix = f"SO-{current_year}-"
+    
+    try:
+        # Find the highest order number for the current year
+        query = """
+            SELECT order_number FROM sales_orders
+            WHERE order_number LIKE $1
+            ORDER BY order_number DESC
+            LIMIT 1
+        """
+        row = await pool.fetchrow(query, f"{prefix}%")
+        
+        if row:
+            # Extract the numeric part and increment
+            last_number = row["order_number"]
+            try:
+                # Get the numeric suffix after SO-YYYY-
+                numeric_part = last_number.split("-")[-1]
+                next_num = int(numeric_part) + 1
+            except (ValueError, IndexError):
+                next_num = 1
+        else:
+            next_num = 1
+        
+        # Format with minimum 3 digits
+        formatted_num = str(next_num).zfill(3)
+        new_order_number = f"{prefix}{formatted_num}"
+        
+        return {"order_number": new_order_number}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate order number: {str(e)}")
+
+
 @sales_orders_router.post("/list")
 async def list_sales_orders(req: ListRequest):
     pool = await get_db_pool()

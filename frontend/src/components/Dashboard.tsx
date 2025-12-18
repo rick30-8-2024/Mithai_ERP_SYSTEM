@@ -26,8 +26,8 @@ const DASHBOARD_DATA = {
   "the Mithai company": {
     "Inventory": ["Manage stock levels"],
     "Recipe Management": ["Manage recipes"],
-    "Work Order": ["Production orders"],
-    "My Work Orders": ["Assigned work orders"],
+    "Production": ["Production orders"],
+    "My Orders": ["Assigned work orders"],
     "Kitchen Display": ["Kitchen operations"],
     "Purchase Order": ["Supplier orders"],
     "Send to Factory": ["Transfer to production"],
@@ -36,11 +36,7 @@ const DASHBOARD_DATA = {
     "Sales Order Dispatch": ["Dispatch orders"],
     "Gate Pass/Inward": ["Entry management"],
     "User Management": ["Manage users"],
-    "Accounting": ["Financial records"],
-    "Quality Check": ["Quality control"],
-    "Customer Management": ["Manage customers"],
-    "Payment Tracking": ["Track payments"],
-    "CRM": ["Customer relations"]
+    "Customer Management": ["Manage customers"]
   }
 } as const;
 
@@ -48,7 +44,8 @@ function getIcon(name: string, size = 24): React.ReactNode {
   const l = name.toLowerCase();
   if (l.includes('inventory')) return <Package width={size} height={size} />;
   if (l.includes('recipe')) return <ChefHat width={size} height={size} />;
-  if (l.includes('work order')) return <ClipboardList width={size} height={size} />;
+  if (l === 'production') return <ClipboardList width={size} height={size} />;
+  if (l === 'my orders') return <ClipboardList width={size} height={size} />;
   if (l.includes('kitchen')) return <Monitor width={size} height={size} />;
   if (l.includes('purchase')) return <ShoppingCart width={size} height={size} />;
   if (l.includes('send to factory') || l.includes('factory')) return <Factory width={size} height={size} />;
@@ -202,7 +199,14 @@ function Dashboard() {
           }}
         >
           {Object.entries(DASHBOARD_DATA[header])
-            .filter(([name]) => userPermissions.length === 0 || userPermissions.includes(name))
+            .filter(([name]) => {
+              if (userPermissions.length === 0) return true;
+              if (userPermissions.includes(name)) return true;
+              // Map old permission names to new card names for backward compatibility
+              if (name === 'Production' && userPermissions.includes('Work Order')) return true;
+              if (name === 'My Orders' && userPermissions.includes('My Work Orders')) return true;
+              return false;
+            })
             .map(([name, arr]) => {
               const desc = Array.isArray(arr) ? arr[0] : '';
               const isHovered = hovered === name;
@@ -217,9 +221,9 @@ function Dashboard() {
                       navigate('/inventory');
                     } else if (l.includes('recipe')) {
                       navigate('/recipe-management');
-                    } else if (l === 'my work orders') {
+                    } else if (l === 'my orders') {
                       navigate('/work-orders');
-                    } else if (l.includes('work order')) {
+                    } else if (l === 'production') {
                       navigate('/work-order');
                     } else if (l.includes('kitchen')) {
                       navigate('/kitchen-display');
@@ -250,9 +254,9 @@ function Dashboard() {
                         navigate('/inventory');
                       } else if (l.includes('recipe')) {
                         navigate('/recipe-management');
-                      } else if (l === 'my work orders') {
+                      } else if (l === 'my orders') {
                         navigate('/work-orders');
-                      } else if (l.includes('work order')) {
+                      } else if (l === 'production') {
                         navigate('/work-order');
                       } else if (l.includes('kitchen')) {
                         navigate('/kitchen-display');

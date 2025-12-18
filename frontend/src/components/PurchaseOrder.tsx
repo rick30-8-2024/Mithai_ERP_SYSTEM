@@ -19,7 +19,7 @@ import {
   X
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
-import { purchaseOrdersApi, type PurchaseOrder } from '../lib/api';
+import { purchaseOrdersApi, inventoryApi, type PurchaseOrder, type InventoryItem } from '../lib/api';
 
 // Modal Component
 type ModalProps = {
@@ -263,8 +263,14 @@ export default function PurchaseOrderPage() {
     quantity: number;
     unit: string;
     rate: number;
+    inventoryId?: string;
   }>>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Inventory search state for items
+  const [itemSearchQueries, setItemSearchQueries] = useState<{ [idx: number]: string }>({});
+  const [itemSearchResults, setItemSearchResults] = useState<{ [idx: number]: InventoryItem[] }>({});
+  const [showItemDropdown, setShowItemDropdown] = useState<{ [idx: number]: boolean }>({});
 
   // Scroll to top when component mounts
   useEffect(() => {
@@ -325,6 +331,43 @@ export default function PurchaseOrderPage() {
 
     return matchesSearch && matchesStatus && matchesSupplier;
   });
+
+  // Search inventory for Raw Materials
+  const searchInventoryForItem = async (query: string, idx: number) => {
+    if (!query || query.length < 2) {
+      setItemSearchResults(prev => ({ ...prev, [idx]: [] }));
+      setShowItemDropdown(prev => ({ ...prev, [idx]: false }));
+      return;
+    }
+
+    try {
+      const response = await inventoryApi.list({
+        query,
+        category: "Raw Material",
+        limit: 10,
+      });
+      setItemSearchResults(prev => ({ ...prev, [idx]: response.items }));
+      setShowItemDropdown(prev => ({ ...prev, [idx]: true }));
+    } catch (error) {
+      console.error('Failed to search inventory:', error);
+    }
+  };
+
+  const selectInventoryItem = (idx: number, inventoryItem: InventoryItem) => {
+    const newItems = [...formItems];
+    newItems[idx] = {
+      ...newItems[idx],
+      name: inventoryItem.name,
+      type: 'Raw Material',
+      category: inventoryItem.category,
+      unit: inventoryItem.unit,
+      rate: inventoryItem.cost_per_unit || 0,
+      inventoryId: inventoryItem.id,
+    };
+    setFormItems(newItems);
+    setItemSearchQueries(prev => ({ ...prev, [idx]: inventoryItem.name }));
+    setShowItemDropdown(prev => ({ ...prev, [idx]: false }));
+  };
 
   const toggleOrderExpansion = (orderId: string) => {
     setExpandedOrder(expandedOrder === orderId ? null : orderId);
@@ -505,7 +548,16 @@ export default function PurchaseOrderPage() {
             ))}
           </select>
           <button
-            onClick={() => setCreateModalOpen(true)}
+            onClick={async () => {
+              try {
+                const result = await purchaseOrdersApi.generatePONumber();
+                setFormData(prev => ({ ...prev, poNumber: result.po_number }));
+                setCreateModalOpen(true);
+              } catch (error) {
+                console.error('Failed to generate PO number:', error);
+                setCreateModalOpen(true);
+              }
+            }}
             style={{
               background: '#000000',
               color: '#ffffff',
@@ -1027,21 +1079,21 @@ export default function PurchaseOrderPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
-                  PO Number *
+                  PO Number (Auto-generated)
                 </label>
                 <input
                   required
                   value={formData.poNumber}
-                  onChange={(e) => setFormData({ ...formData, poNumber: e.target.value })}
+                  readOnly
                   style={{
-                    background: 'transparent',
+                    background: 'rgba(127,127,127,0.08)',
                     border: '1.5px solid var(--border)',
                     borderRadius: 8,
                     padding: '8px 12px',
                     color: 'var(--fg)',
                     outline: 'none',
+                    cursor: 'not-allowed',
                   }}
-                  placeholder="PO-2025-001"
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1260,19 +1312,21 @@ export default function PurchaseOrderPage() {
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <label style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg)' }}>
-                  Items
+                  Items (Raw Materials)
                 </label>
                 <button
                   type="button"
                   onClick={() => {
+                    const newIdx = formItems.length;
                     setFormItems([...formItems, {
                       name: '',
                       type: 'Raw Material',
                       category: '',
                       quantity: 0,
-                      unit: 'kg',
+                      unit: '',
                       rate: 0,
                     }]);
+                    setItemSearchQueries(prev => ({ ...prev, [newIdx]: '' }));
                   }}
                   style={{
                     background: 'transparent',
@@ -1293,76 +1347,110 @@ export default function PurchaseOrderPage() {
                 </button>
               </div>
 
+              {/* Column Headers */}
+              {formItems.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '3fr 80px 80px 90px 120px 36px',
+                  gap: 8,
+                  marginBottom: 6,
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Item Name</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Quantity</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Unit</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Rate</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Total</span>
+                  <span></span>
+                </div>
+              )}
+
               {formItems.map((item, idx) => (
                 <div key={idx} style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 0.8fr 0.8fr 0.8fr 40px',
+                  gridTemplateColumns: '3fr 80px 80px 90px 120px 36px',
                   gap: 8,
                   marginBottom: 8,
-                  alignItems: 'end',
+                  alignItems: 'center',
                 }}>
-                  <input
-                    required
-                    placeholder="Item Name"
-                    value={item.name}
-                    onChange={(e) => {
-                      const newItems = [...formItems];
-                      newItems[idx].name = e.target.value;
-                      setFormItems(newItems);
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      padding: '6px 8px',
-                      color: 'var(--fg)',
-                      outline: 'none',
-                      fontSize: 12,
-                    }}
-                  />
-                  <select
-                    value={item.type}
-                    onChange={(e) => {
-                      const newItems = [...formItems];
-                      newItems[idx].type = e.target.value;
-                      setFormItems(newItems);
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      padding: '6px 8px',
-                      color: 'var(--fg)',
-                      outline: 'none',
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="Raw Material">Raw Material</option>
-                    <option value="Finished Good">Finished Good</option>
-                  </select>
-                  <input
-                    required
-                    placeholder="Category"
-                    value={item.category}
-                    onChange={(e) => {
-                      const newItems = [...formItems];
-                      newItems[idx].category = e.target.value;
-                      setFormItems(newItems);
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: '1.5px solid var(--border)',
-                      borderRadius: 8,
-                      padding: '6px 8px',
-                      color: 'var(--fg)',
-                      outline: 'none',
-                      fontSize: 12,
-                    }}
-                  />
+                  {/* Item Name with Autocomplete */}
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      required
+                      placeholder="Search raw material..."
+                      value={itemSearchQueries[idx] ?? item.name}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setItemSearchQueries(prev => ({ ...prev, [idx]: value }));
+                        const newItems = [...formItems];
+                        newItems[idx].name = value;
+                        setFormItems(newItems);
+                        searchInventoryForItem(value, idx);
+                      }}
+                      onFocus={() => {
+                        if (item.name && item.name.length >= 2) {
+                          searchInventoryForItem(item.name, idx);
+                        }
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setShowItemDropdown(prev => ({ ...prev, [idx]: false }));
+                        }, 200);
+                      }}
+                      style={{
+                        width: '100%',
+                        background: 'transparent',
+                        border: '1.5px solid var(--border)',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        color: 'var(--fg)',
+                        outline: 'none',
+                        fontSize: 13,
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    {showItemDropdown[idx] && itemSearchResults[idx]?.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        marginTop: 4,
+                        maxHeight: 200,
+                        overflowY: 'auto',
+                        zIndex: 100,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      }}>
+                        {itemSearchResults[idx].map((invItem) => (
+                          <div
+                            key={invItem.id}
+                            onClick={() => selectInventoryItem(idx, invItem)}
+                            style={{
+                              padding: '10px 12px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--border)',
+                              fontSize: 13,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            <div style={{ fontWeight: 600 }}>{invItem.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                              {invItem.unit} • ₹{invItem.cost_per_unit?.toFixed(2) || '0.00'}/unit
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quantity */}
                   <input
                     required
                     type="number"
+                    min="0"
                     placeholder="Qty"
                     value={item.quantity || ''}
                     onChange={(e) => {
@@ -1374,62 +1462,80 @@ export default function PurchaseOrderPage() {
                       background: 'transparent',
                       border: '1.5px solid var(--border)',
                       borderRadius: 8,
-                      padding: '6px 8px',
+                      padding: '8px 10px',
                       color: 'var(--fg)',
                       outline: 'none',
-                      fontSize: 12,
+                      fontSize: 13,
+                      boxSizing: 'border-box',
                     }}
                   />
+
+                  {/* Unit (read-only, auto-populated) */}
                   <input
-                    required
+                    readOnly
                     placeholder="Unit"
                     value={item.unit}
-                    onChange={(e) => {
-                      const newItems = [...formItems];
-                      newItems[idx].unit = e.target.value;
-                      setFormItems(newItems);
-                    }}
                     style={{
-                      background: 'transparent',
+                      background: 'rgba(127,127,127,0.08)',
                       border: '1.5px solid var(--border)',
                       borderRadius: 8,
-                      padding: '6px 8px',
+                      padding: '8px 10px',
                       color: 'var(--fg)',
                       outline: 'none',
-                      fontSize: 12,
+                      fontSize: 13,
+                      cursor: 'not-allowed',
+                      boxSizing: 'border-box',
                     }}
                   />
+
+                  {/* Rate (read-only, auto-populated) */}
                   <input
-                    required
-                    type="number"
+                    readOnly
                     placeholder="Rate"
-                    value={item.rate || ''}
-                    onChange={(e) => {
-                      const newItems = [...formItems];
-                      newItems[idx].rate = parseFloat(e.target.value) || 0;
-                      setFormItems(newItems);
-                    }}
+                    value={item.rate ? `₹${item.rate.toFixed(2)}` : ''}
                     style={{
-                      background: 'transparent',
+                      background: 'rgba(127,127,127,0.08)',
                       border: '1.5px solid var(--border)',
                       borderRadius: 8,
-                      padding: '6px 8px',
+                      padding: '8px 10px',
                       color: 'var(--fg)',
                       outline: 'none',
-                      fontSize: 12,
+                      fontSize: 13,
+                      cursor: 'not-allowed',
+                      boxSizing: 'border-box',
                     }}
                   />
+
+                  {/* Total (calculated) */}
+                  <div style={{
+                    background: 'rgba(127,127,127,0.08)',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--fg)',
+                    boxSizing: 'border-box',
+                  }}>
+                    ₹{(item.quantity * item.rate).toFixed(2)}
+                  </div>
+
+                  {/* Remove Button (Red) */}
                   <button
                     type="button"
                     onClick={() => {
                       setFormItems(formItems.filter((_, i) => i !== idx));
+                      // Clean up search state
+                      const newQueries = { ...itemSearchQueries };
+                      delete newQueries[idx];
+                      setItemSearchQueries(newQueries);
                     }}
                     style={{
-                      background: 'transparent',
-                      border: '1.5px solid var(--border)',
+                      background: 'rgba(220, 38, 38, 0.1)',
+                      border: '1.5px solid #dc2626',
                       borderRadius: 8,
                       padding: 6,
-                      color: 'var(--fg)',
+                      color: '#dc2626',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -1440,6 +1546,21 @@ export default function PurchaseOrderPage() {
                   </button>
                 </div>
               ))}
+
+              {/* Total Summary */}
+              {formItems.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>
+                    Grand Total: ₹{formItems.reduce((sum, item) => sum + (item.quantity * item.rate), 0).toFixed(2)}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}

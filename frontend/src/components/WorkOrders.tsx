@@ -356,7 +356,7 @@ export default function WorkOrders() {
             </button>
             <div>
               <h1 className="title" style={{ margin: 0, textAlign: "left", fontSize: 20 }}>
-                My Work Orders
+                My Orders
               </h1>
               <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 10 }}>
                 View and manage your assigned work orders

@@ -294,7 +294,7 @@ export default function WorkOrderPage() {
                         gap: 12,
                     }}
                 >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <button
                             onClick={() => navigate(-1)}
                             style={{
@@ -315,8 +315,8 @@ export default function WorkOrderPage() {
                             <ArrowLeft width={20} height={20} />
                         </button>
                         <div>
-                            <h1 className="title" style={{ margin: 0, fontSize: 20 }}>
-                                Manage Work Orders
+                            <h1 className="title" style={{ margin: 0, fontSize: 20, textAlign: "left" }}>
+                                Production
                             </h1>
                             <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 10 }}>
                                 Create and manage production work orders

@@ -751,7 +751,16 @@ export default function SalesOrderComponent() {
             {priorities.map(p => <option key={p} value={p}>{p === 'All' ? 'All Priorities' : p}</option>)}
           </select>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={async () => {
+              try {
+                const result = await salesOrdersApi.generateOrderNumber();
+                setFormData(prev => ({ ...prev, orderNumber: result.order_number }));
+                setShowCreateModal(true);
+              } catch (error) {
+                console.error('Failed to generate order number:', error);
+                setShowCreateModal(true);
+              }
+            }}
             className="btn"
             style={{
               padding: '10px 16px',
@@ -1081,21 +1090,21 @@ export default function SalesOrderComponent() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-                      Order Number *
+                      Order Number (Auto-generated)
                     </label>
                     <input
                       required
                       type="text"
                       value={formData.orderNumber}
-                      onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
-                      placeholder="SO-2025-001"
+                      readOnly
                       style={{
                         width: '80%',
                         padding: '8px 12px',
-                        background: 'var(--bg)',
+                        background: 'rgba(127,127,127,0.08)',
                         border: '1px solid var(--border)',
                         borderRadius: 8,
                         fontSize: 14,
+                        cursor: 'not-allowed',
                       }}
                     />
                   </div>
