@@ -334,7 +334,7 @@ export default function RecipeManagement() {
               <div style={{ padding: 18, borderBottom: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 12 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>{recipe.name}</div>
+                    <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>{recipe.name} ({recipe.milk_type})</div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>SKU: {recipe.sku}</div>
                   </div>
                   <button
@@ -638,6 +638,7 @@ function IngredientAutocomplete({ value, onSelect, onChange, style }: Ingredient
       try {
         const res = await inventoryApi.list({
           query: value,
+          category: "Raw Material",
           limit: 20,
           offset: 0,
         });
@@ -762,6 +763,7 @@ function IngredientAutocomplete({ value, onSelect, onChange, style }: Ingredient
 type AddOrEditValues = {
   name: string;
   sku: string;
+  milk_type: 'With Milk' | 'Without Milk';
   total_yield: number;
   yield_unit: string;
   preparation_time: number;
@@ -790,6 +792,7 @@ function AddOrEditModal({
   const [values, setValues] = useState<AddOrEditValues>({
     name: initial?.name || "",
     sku: initial?.sku || "",
+    milk_type: initial?.milk_type || "With Milk",
     total_yield: initial?.total_yield ?? 1,
     yield_unit: initial?.yield_unit || "pcs",
     preparation_time: initial?.preparation_time ?? 30,
@@ -809,6 +812,7 @@ function AddOrEditModal({
     setValues({
       name: initial?.name || "",
       sku: initial?.sku || "",
+      milk_type: initial?.milk_type || "With Milk",
       total_yield: initial?.total_yield ?? 1,
       yield_unit: initial?.yield_unit || "pcs",
       preparation_time: initial?.preparation_time ?? 30,
@@ -939,7 +943,7 @@ function AddOrEditModal({
   return (
     <Modal open={open} title={title} onClose={onClose} width={800}>
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
-        {/* Basic Info */}
+        {/* First Row: Recipe Name, Brand, SKU */}
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
           <Field label="Recipe Name">
             <input
@@ -998,6 +1002,23 @@ function AddOrEditModal({
               disabled={autoGenerateSku}
             />
           </label>
+        </div>
+
+        {/* Milk Type Dropdown - After Recipe Name, Brand, SKU row */}
+        <Field label="Milk Type">
+          <select
+            value={values.milk_type}
+            onChange={(e) => setValues((v) => ({ ...v, milk_type: e.target.value as 'With Milk' | 'Without Milk' }))}
+            style={inputStyle}
+            required
+          >
+            <option value="With Milk">With Milk</option>
+            <option value="Without Milk">Without Milk</option>
+          </select>
+        </Field>
+
+        {/* Second Row: Grade, Total Yield, Yield Unit, etc. */}
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
           <Field label="Grade">
             <input
               value={values.grade || ""}
@@ -1076,7 +1097,7 @@ function AddOrEditModal({
             </button>
           </div>
           {values.ingredients.map((ing, idx) => (
-            <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr auto", gap: 8, marginBottom: 8, alignItems: "end" }}>
+            <div key={idx} style={{ display: "grid", gridTemplateColumns: "3fr 1fr 1fr auto", gap: 8, marginBottom: 8, alignItems: "end" }}>
               <Field label="Name">
                 <IngredientAutocomplete
                   value={ing.ingredient_name}
@@ -1131,24 +1152,6 @@ function AddOrEditModal({
                   value={ing.unit}
                   onChange={(e) => updateIngredient(idx, "unit", e.target.value)}
                   placeholder="g"
-                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
-                  readOnly
-                />
-              </Field>
-              <Field label="Grade">
-                <input
-                  value={ing.grade || ""}
-                  onChange={(e) => updateIngredient(idx, "grade", e.target.value)}
-                  placeholder="Auto"
-                  style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
-                  readOnly
-                />
-              </Field>
-              <Field label="Cost (₹)">
-                <input
-                  type="number"
-                  value={ing.cost.toFixed(2)}
-                  onChange={(e) => updateIngredient(idx, "cost", parseFloat(e.target.value || "0"))}
                   style={{ ...inputStyle, background: "rgba(127,127,127,0.08)" }}
                   readOnly
                 />

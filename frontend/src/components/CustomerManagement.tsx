@@ -410,10 +410,12 @@ function CustomerManagementComponent() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: '500' }}>Type:</span>
                   <span className={getTypeColor(customer.customerType)} style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
                     {customer.customerType}
                   </span>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: '500', marginLeft: '8px' }}>Status:</span>
                   <span className={getStatusColor(customer.status)} style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
                     {customer.status}
                   </span>

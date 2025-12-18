@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     sku TEXT NOT NULL UNIQUE,
+    milk_type TEXT NOT NULL DEFAULT 'With Milk',
     total_yield NUMERIC NOT NULL,
     yield_unit TEXT NOT NULL,
     preparation_time INTEGER NOT NULL,

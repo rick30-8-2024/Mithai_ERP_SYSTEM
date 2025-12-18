@@ -402,6 +402,7 @@ export default function SalesOrderComponent() {
       setSearchingInventory({ ...searchingInventory, [index]: true });
       const response = await inventoryApi.list({
         query,
+        category: "Finished Good",
         limit: 10,
       });
       setInventorySearchResults({ ...inventorySearchResults, [index]: response.items });

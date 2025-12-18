@@ -36,6 +36,7 @@ def _row_to_recipe(row, ingredients: List[dict] = None, instructions: List[str] 
         "id": str(row["id"]),
         "name": row["name"],
         "sku": row["sku"],
+        "milk_type": row.get("milk_type", "With Milk"),
         "total_yield": _to_float(row["total_yield"]),
         "yield_unit": row["yield_unit"],
         "preparation_time": int(row["preparation_time"]) if row["preparation_time"] else 0,
@@ -65,6 +66,7 @@ class GetRequest(BaseModel):
 class CreateRequest(BaseModel):
     name: str
     sku: str
+    milk_type: str = "With Milk"
     total_yield: float
     yield_unit: str
     preparation_time: int
@@ -82,6 +84,7 @@ class UpdateRequest(BaseModel):
     id: Optional[str] = None
     name: Optional[str] = None
     new_sku: Optional[str] = None
+    milk_type: Optional[str] = None
     total_yield: Optional[float] = None
     yield_unit: Optional[str] = None
     preparation_time: Optional[int] = None
@@ -103,7 +106,7 @@ async def list_recipes(payload: ListRequest):
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                SELECT id, name, sku, milk_type, total_yield, yield_unit, preparation_time, cooking_time,
                        brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                 FROM recipes
                 WHERE ($1 = '' OR name ILIKE $2 OR sku ILIKE $2 OR brand ILIKE $2)
@@ -166,7 +169,7 @@ async def get_recipe(payload: GetRequest):
             if payload.sku:
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                    SELECT id, name, sku, milk_type, total_yield, yield_unit, preparation_time, cooking_time,
                            brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     FROM recipes WHERE sku = $1
                     """,
@@ -175,7 +178,7 @@ async def get_recipe(payload: GetRequest):
             else:
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                    SELECT id, name, sku, milk_type, total_yield, yield_unit, preparation_time, cooking_time,
                            brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     FROM recipes WHERE id = $1::uuid
                     """,
@@ -237,13 +240,13 @@ async def create_recipe(payload: CreateRequest):
                 # Create recipe
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO recipes (name, sku, total_yield, yield_unit, preparation_time,
+                    INSERT INTO recipes (name, sku, milk_type, total_yield, yield_unit, preparation_time,
                                        cooking_time, brand, grade, packing_weight, total_cost, last_updated_by)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                    RETURNING id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    RETURNING id, name, sku, milk_type, total_yield, yield_unit, preparation_time, cooking_time,
                               brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     """,
-                    payload.name, payload.sku, payload.total_yield, payload.yield_unit,
+                    payload.name, payload.sku, payload.milk_type, payload.total_yield, payload.yield_unit,
                     payload.preparation_time, payload.cooking_time,
                     payload.brand, payload.grade, payload.packing_weight, total_cost, payload.last_updated_by
                 )
@@ -341,6 +344,9 @@ async def update_recipe(payload: UpdateRequest):
                 if payload.new_sku is not None:
                     fields.append("sku = ${}")
                     values.append(payload.new_sku)
+                if payload.milk_type is not None:
+                    fields.append("milk_type = ${}")
+                    values.append(payload.milk_type)
                 if payload.name is not None:
                     fields.append("name = ${}")
                     values.append(payload.name)
@@ -423,7 +429,7 @@ async def update_recipe(payload: UpdateRequest):
                 # Get updated recipe
                 row = await conn.fetchrow(
                     """
-                    SELECT id, name, sku, total_yield, yield_unit, preparation_time, cooking_time,
+                    SELECT id, name, sku, milk_type, total_yield, yield_unit, preparation_time, cooking_time,
                            brand, grade, packing_weight, total_cost, last_updated, last_updated_by
                     FROM recipes WHERE id = $1
                     """,

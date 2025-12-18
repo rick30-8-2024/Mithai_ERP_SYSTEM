@@ -195,6 +195,7 @@ export interface Recipe {
   id: string;
   name: string;
   sku: string;
+  milk_type: 'With Milk' | 'Without Milk';
   total_yield: number;
   yield_unit: string;
   preparation_time: number;
@@ -223,6 +224,7 @@ export interface RecipeListRequest {
 export interface RecipeCreateRequest {
   name: string;
   sku: string;
+  milk_type?: 'With Milk' | 'Without Milk';
   total_yield: number;
   yield_unit: string;
   preparation_time: number;
@@ -239,6 +241,7 @@ export interface RecipeUpdateRequest {
   sku?: string;
   id?: string;
   name?: string;
+  milk_type?: 'With Milk' | 'Without Milk';
   total_yield?: number;
   yield_unit?: string;
   preparation_time?: number;
