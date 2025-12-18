@@ -449,7 +449,8 @@ export default function SalesOrderDispatch() {
     ));
   };
 
-  const updateItemAllocation = (entryId: string, itemId: string, quantity: number) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _updateItemAllocation = (entryId: string, itemId: string, quantity: number) => {
     setLogisticsEntries(logisticsEntries.map(entry =>
       entry.id === entryId
         ? {
