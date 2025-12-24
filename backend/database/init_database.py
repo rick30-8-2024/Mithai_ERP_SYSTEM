@@ -25,7 +25,7 @@ async def initialize_database():
             sql_script_2 = f.read()
         
         await conn.execute(sql_script_1)
-        await conn.execute(sql_script_2)
+        # await conn.execute(sql_script_2)
         
         print("✓ Database tables initialized successfully")
         

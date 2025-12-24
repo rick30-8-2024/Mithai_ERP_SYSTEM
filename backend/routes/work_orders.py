@@ -102,6 +102,71 @@ async def restore_inventory(conn, ingredients: List[Dict]):
         )
 
 
+async def add_finished_goods_to_inventory(conn, recipe_row, actual_quantity: float, last_updated_by: str = None):
+    """
+    Add finished goods to inventory when a work order is completed.
+    If item exists, update stock. If not, create new inventory item.
+    """
+    recipe_name = recipe_row["name"]
+    recipe_sku = recipe_row["sku"]
+    yield_unit = recipe_row["yield_unit"]
+    total_yield = _to_float(recipe_row["total_yield"])
+    total_cost = _to_float(recipe_row.get("total_cost", 0))
+    brand = recipe_row.get("brand")
+    grade = recipe_row.get("grade")
+    packing_weight = recipe_row.get("packing_weight")
+    
+    cost_per_unit = total_cost / total_yield if total_yield > 0 else 0
+    
+    existing_item = await conn.fetchrow(
+        """
+        SELECT id, current_stock FROM inventory
+        WHERE LOWER(name) = LOWER($1) AND category = 'Finished Good'
+        """,
+        recipe_name
+    )
+    
+    if existing_item:
+        await conn.execute(
+            """
+            UPDATE inventory
+            SET current_stock = current_stock + $1,
+                last_updated = NOW(),
+                last_updated_by = COALESCE($2, last_updated_by)
+            WHERE id = $3
+            """,
+            actual_quantity,
+            last_updated_by,
+            existing_item["id"]
+        )
+    else:
+        inventory_sku = f"FG-{recipe_sku}"
+        sku_exists = await conn.fetchval(
+            "SELECT 1 FROM inventory WHERE sku = $1",
+            inventory_sku
+        )
+        if sku_exists:
+            import uuid
+            inventory_sku = f"FG-{recipe_sku}-{str(uuid.uuid4())[:8].upper()}"
+        
+        await conn.execute(
+            """
+            INSERT INTO inventory (name, sku, category, unit, current_stock, min_stock, max_stock,
+                                  cost_per_unit, last_updated_by, brand, grade, packing_weight)
+            VALUES ($1, $2, 'Finished Good', $3, $4, 0, 10000, $5, $6, $7, $8, $9)
+            """,
+            recipe_name,
+            inventory_sku,
+            yield_unit,
+            actual_quantity,
+            cost_per_unit,
+            last_updated_by,
+            brand,
+            grade,
+            str(packing_weight) if packing_weight else None
+        )
+
+
 class RecipeInfo(BaseModel):
     id: str
     name: str
@@ -533,7 +598,6 @@ async def update_work_order(payload: UpdateRequest):
         fields.append("priority = ${}")
         values.append(payload.priority)
     if payload.scheduled_date is not None:
-        # Convert date string to date object
         try:
             scheduled_date_obj = datetime.strptime(payload.scheduled_date, "%Y-%m-%d").date()
             fields.append("scheduled_date = ${}")
@@ -541,7 +605,6 @@ async def update_work_order(payload: UpdateRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduled_date format. Use YYYY-MM-DD")
     if payload.due_date is not None:
-        # Convert date string to date object
         try:
             due_date_obj = datetime.strptime(payload.due_date, "%Y-%m-%d").date()
             fields.append("due_date = ${}")
@@ -561,7 +624,6 @@ async def update_work_order(payload: UpdateRequest):
         fields.append("last_updated_by = ${}")
         values.append(payload.last_updated_by)
     if payload.started_at is not None:
-        # Convert ISO timestamp string to datetime object
         try:
             started_at_obj = datetime.fromisoformat(payload.started_at.replace('Z', '+00:00'))
             fields.append("started_at = ${}")
@@ -569,7 +631,6 @@ async def update_work_order(payload: UpdateRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid started_at format. Use ISO 8601 format")
     if payload.paused_at is not None:
-        # Convert ISO timestamp string to datetime object
         try:
             paused_at_obj = datetime.fromisoformat(payload.paused_at.replace('Z', '+00:00'))
             fields.append("paused_at = ${}")
@@ -577,7 +638,6 @@ async def update_work_order(payload: UpdateRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid paused_at format. Use ISO 8601 format")
     if payload.completed_at is not None:
-        # Convert ISO timestamp string to datetime object
         try:
             completed_at_obj = datetime.fromisoformat(payload.completed_at.replace('Z', '+00:00'))
             fields.append("completed_at = ${}")
@@ -598,50 +658,43 @@ async def update_work_order(payload: UpdateRequest):
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Update work order if fields provided
+                if payload.work_order_number:
+                    existing_row = await conn.fetchrow(
+                        "SELECT id, status, recipe_id, actual_quantity FROM work_orders WHERE work_order_number = $1",
+                        payload.work_order_number
+                    )
+                else:
+                    existing_row = await conn.fetchrow(
+                        "SELECT id, status, recipe_id, actual_quantity FROM work_orders WHERE id = $1::uuid",
+                        payload.id
+                    )
+                
+                if not existing_row:
+                    raise HTTPException(status_code=404, detail="Work order not found")
+                
+                work_order_id = existing_row["id"]
+                previous_status = existing_row["status"]
+                
                 if fields:
                     set_clauses = []
                     for idx, clause in enumerate(fields, start=1):
                         set_clauses.append(clause.replace("${}", f"${idx}"))
                     set_sql = ", ".join(set_clauses) + ", last_updated = NOW()"
                     
-                    if payload.work_order_number:
-                        where_param_index = len(values) + 1
-                        sql = f"""
-                            UPDATE work_orders
-                            SET {set_sql}
-                            WHERE work_order_number = ${where_param_index}
-                            RETURNING id
-                        """
-                        row = await conn.fetchrow(sql, *values, payload.work_order_number)
-                    else:
-                        where_param_index = len(values) + 1
-                        sql = f"""
-                            UPDATE work_orders
-                            SET {set_sql}
-                            WHERE id = ${where_param_index}::uuid
-                            RETURNING id
-                        """
-                        row = await conn.fetchrow(sql, *values, payload.id)
+                    where_param_index = len(values) + 1
+                    sql = f"""
+                        UPDATE work_orders
+                        SET {set_sql}
+                        WHERE id = ${where_param_index}
+                        RETURNING id
+                    """
+                    row = await conn.fetchrow(sql, *values, work_order_id)
                     
                     if not row:
                         raise HTTPException(status_code=404, detail="Work order not found")
-                    work_order_id = row["id"]
                 else:
-                    # Get work order ID
-                    if payload.work_order_number:
-                        row = await conn.fetchrow("SELECT id FROM work_orders WHERE work_order_number = $1", payload.work_order_number)
-                    else:
-                        row = await conn.fetchrow("SELECT id FROM work_orders WHERE id = $1::uuid", payload.id)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Work order not found")
-                    work_order_id = row["id"]
-                    
-                    # Update last_updated
                     await conn.execute("UPDATE work_orders SET last_updated = NOW() WHERE id = $1", work_order_id)
                 
-                # Update ingredients if provided
                 if payload.ingredients is not None:
                     await conn.execute("DELETE FROM work_order_ingredients WHERE work_order_id = $1", work_order_id)
                     for ing in payload.ingredients:
@@ -655,7 +708,25 @@ async def update_work_order(payload: UpdateRequest):
                             ing.unit, ing.supplier, ing.grade, ing.cost
                         )
                 
-                # Get updated work order
+                is_completing = payload.status == "Completed" and previous_status != "Completed"
+                if is_completing:
+                    recipe_row = await conn.fetchrow(
+                        """
+                        SELECT id, name, sku, total_yield, yield_unit, total_cost, brand, grade, packing_weight
+                        FROM recipes WHERE id = $1
+                        """,
+                        existing_row["recipe_id"]
+                    )
+                    
+                    if recipe_row:
+                        final_quantity = payload.actual_quantity if payload.actual_quantity is not None else _to_float(existing_row["actual_quantity"])
+                        await add_finished_goods_to_inventory(
+                            conn,
+                            recipe_row,
+                            final_quantity,
+                            payload.last_updated_by
+                        )
+                
                 row = await conn.fetchrow(
                     """
                     SELECT wo.id, wo.work_order_number, wo.recipe_id, wo.batch_size, wo.target_quantity,
@@ -681,7 +752,6 @@ async def update_work_order(payload: UpdateRequest):
                     "yield_unit": row["recipe_yield_unit"],
                 }
                 
-                # Get ingredients
                 ingredient_rows = await conn.fetch(
                     """
                     SELECT ingredient_name, required_quantity, actual_quantity, unit, supplier, grade, cost
